@@ -26,3 +26,39 @@ To build from the command line, in this directory run:
 ```
 ant
 ```
+
+## Configuration
+Configuration happens in the two files under the `config` directory:
+
+### Runtime configuration
+...happens in `config/concord4pi.config`.
+
+Config item | Description
+----------- | -----------
+`SerialDevice` | Should be set to the full path to the serial/USB device, such as `/dev/ttyUSB0`.
+`MQTTBroadcaster`  | Specifies if concord4pi should send status to a MQTT broker (you probably want this to be `true`).
+`MQTTConnectionString` | Connection string to mqtt broker, such as `tcp://mqttserver:1833`.
+`MQTTClientID` | A name that will be used to identify concord4pi in the message broker - helps troubleshooting or identification.
+`MQTTUsername` | Username to authenticate to message broker with.
+`MQTTPassword` | Password to authenticate to message broker with.
+`MQTTBaseTopic` | Top-level mqtt topic that other concord4pi topics will go under. `concord4pi` is suggested.
+`MQTTEnableCommands` | If set to true, concord4pi will read commands from MQTT and send them to the alarm system.
+`MQTTCommandTopic` | If `MQTTEnableCommands` is set to true, then concord4pi will look in the `MQTTBaseTopic`/`MQTTCommandTopic` for commands. e.g. if this is set to `cmd`, then the whole path could be `concord4pi/cmd`.
+
+### Logging configuration
+...happens in `config/log.config`.
+
+Log levels are controlled by `writer.level` and can be any of the following values, from **least** to **most verbose**:
+
+ * error
+ * warn
+ * info
+ * debug
+ * trace
+
+## Running
+To run concord4pi from the command line, a command like the following will work:
+
+```
+java -Dtinylog.configuration=config/log.config -cp lib/jSerialComm-2.4.2.jar:jars/concord4pi.jar:lib/org.eclipse.paho.client.mqttv3-1.1.1.jar:lib/tinylog-api-2.0.0-M2.1.jar:lib/tinylog-impl-2.0.0-M2.1.jar concord4pi.concord4pi
+```
