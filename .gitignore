@@ -5,3 +5,5 @@ debug/SERIALOUT
 logs
 .classpath
 .project
+build
+dist

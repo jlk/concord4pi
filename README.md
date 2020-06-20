@@ -17,3 +17,12 @@ Requirements
 This software requires an computer attached to the SB2000 via serial interface with network connectivity to an IPv4 network.  This has been tested on:
  - Raspberry Pi Zero W (should function on all other Raspberry Pi devices)
  - RS232 Serial to TTL Converter Board (hardwired to RPI Zero W GPIO serial pins)
+
+## Building
+This code has been tested to build with JDK13 and a modern version of [ant](https://ant.apache.org/), on MacOS Catalina and Ubuntu 19.10.
+
+To build from the command line, in this directory run:
+
+```
+ant
+```
