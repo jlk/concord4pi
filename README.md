@@ -76,8 +76,8 @@ docker build -t concord4pi .
 ### Running Docker image
 One can either modify the configuration file built into the container image, or bind-mount a local configuration file as in the example below (note the comment above about sending output to stdout in a container).
 
-The serial device will also need to be bind-mounted into the container where the configuration file specified it (`SerialDevice`) so concord4pi can access it.
+The serial device will also need to be added into the container so concord4pi can access it.
 
 ```
-docker run -ti -v config/:/usr/src/concord4pi/config -v /dev/ttyUSB0:/dev/ttyUSB0 concord4pi 
+docker run -ti -v config/:/usr/src/concord4pi/config --device /dev/ttyUSB0 concord4pi 
 ```
