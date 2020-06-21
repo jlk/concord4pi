@@ -62,3 +62,22 @@ To run concord4pi from the command line, a command like the following will work:
 ```
 java -Dtinylog.configuration=config/log.config -cp lib/jSerialComm-2.4.2.jar:jars/concord4pi.jar:lib/org.eclipse.paho.client.mqttv3-1.1.1.jar:lib/tinylog-api-2.0.0-M2.1.jar:lib/tinylog-impl-2.0.0-M2.1.jar concord4pi.concord4pi
 ```
+
+## Docker support
+This project can also build to a Docker image:
+
+```
+docker build -t concord4pi .
+```
+**NOTE** that for the containerized version, logging is set to stdout instead of a log file by default. This is standard practice for containerized apps. This change is made by a sed command in the Dockerfile.
+
+(This image is not yet being pushed to Docker Hub or GitHub packages. Soon...)
+
+### Running Docker image
+One can either modify the configuration file built into the container image, or bind-mount a local configuration file as in the example below (note the comment above about sending output to stdout in a container).
+
+The serial device will also need to be bind-mounted into the container where the configuration file specified it (`SerialDevice`) so concord4pi can access it.
+
+```
+docker run -ti -v config/:/usr/src/concord4pi/config -v /dev/ttyUSB0:/dev/ttyUSB0 concord4pi 
+```
