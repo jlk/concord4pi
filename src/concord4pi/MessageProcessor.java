@@ -110,6 +110,13 @@ public class MessageProcessor {
 		return responses;
 	}
 	
+	public final ArrayList<IOMessage> buildZoneInventoryQuery() {
+		ArrayList<IOMessage> responses = new ArrayList<IOMessage>();
+
+		responses.add(new IOMessage(SB2000Constants.FULLCOMMAND_FullEquipmentList));
+		return responses;
+	}
+
 	private void panelType(IOMessage theMessage) {
 		String data = theMessage.getDataString();
 		String panelType = data.substring(0, 2);

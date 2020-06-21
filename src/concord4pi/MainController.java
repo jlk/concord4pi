@@ -44,6 +44,9 @@ public class MainController {
 		//start the new thread for the alarm system
 		new Thread(alarmSystem).start();
 		
+		// At startup, do equipment/zone discovery so the zones and their names are published on the MQ.
+		alarmSystem.sendMessages(messageProcessor.buildZoneInventoryQuery().toArray(new IOMessage[0]));
+
 		//loop to do work
 		while(isRunning) {
 			//reset messagesToSend on each loop
