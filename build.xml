@@ -32,8 +32,8 @@
     <!-- Create the distribution directory -->
     <mkdir dir="${dist}/lib"/>
 
-    <!-- Put everything in ${build} into the MyProject-${DSTAMP}.jar file -->
-    <jar jarfile="${dist}/lib/MyProject-${DSTAMP}.jar" basedir="${build}"/>
+    <!-- Put everything in ${build} into concord4pi.jar file -->
+    <jar jarfile="jars/concord4pi.jar" basedir="${build}"/>
   </target>
 
   <target name="clean"
