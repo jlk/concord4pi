@@ -81,6 +81,12 @@ public class MainController {
 			if(!messagesToSend.isEmpty()) {
 				alarmSystem.sendMessages(messagesToSend.toArray(new IOMessage[0]));
 			}
+
+			try {
+				Thread.sleep(50);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 	
