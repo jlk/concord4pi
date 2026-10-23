@@ -25,9 +25,14 @@ public class SB2000Controller implements Runnable {
 	private boolean isRunning = false;
 	
 	public SB2000Controller(String serialDeviceName, LogEngine logger) {
+		this(new SerialController(serialDeviceName, logger), logger);
+	}
+
+	//package-private so tests can supply a SerialController that doesn't open a port
+	SB2000Controller(SerialController serialPort, LogEngine logger) {
 		this.logger = logger;
 		isRunning = true;
-		serialPort = new SerialController(serialDeviceName, logger);
+		this.serialPort = serialPort;
 		setupCallbacks();
 	}
 	
@@ -77,7 +82,7 @@ public class SB2000Controller implements Runnable {
 		serialPort.closePort();
 	}
 	
-	private void processOutgoingMessages() {
+	void processOutgoingMessages() {
 		IBaseMessage message;
 		while(!txQueue.isEmpty()) {
 			//send the messages in the transmit queue
@@ -92,7 +97,7 @@ public class SB2000Controller implements Runnable {
 		}
 	}
 	
-	private void processIncomingMessages() {
+	void processIncomingMessages() {
 		String dataProcessorString;
 		
 		//exit for zero length arrays
@@ -252,22 +257,27 @@ public class SB2000Controller implements Runnable {
 			if (event.getEventType() != SerialPort.LISTENING_EVENT_DATA_RECEIVED) {
 				return;
 			}
-			
-			try {
-				//use semaphores, so we aren't reading and writing to the string
-				//at the same time.
-				lock.acquire();
-				logger.log("Acquired lock for data processing", Level.TRACE);
-				dataToProcess += new String(event.getReceivedData());
-				newDataWaiting = true;
-			}
-			catch(InterruptedException lockException) {
-				logger.log("Could not acquire lock for processing data", Level.WARN);
-			}
-			finally {
-				lock.release();
-				logger.log("Release lock for data processing", Level.TRACE);
-			}
+
+			appendReceivedData(event.getReceivedData());
+		}
+	}
+
+	//package-private so tests can feed serial data without a jSerialComm event
+	void appendReceivedData(byte[] receivedData) {
+		try {
+			//use semaphores, so we aren't reading and writing to the string
+			//at the same time.
+			lock.acquire();
+			logger.log("Acquired lock for data processing", Level.TRACE);
+			dataToProcess += new String(receivedData);
+			newDataWaiting = true;
+		}
+		catch(InterruptedException lockException) {
+			logger.log("Could not acquire lock for processing data", Level.WARN);
+		}
+		finally {
+			lock.release();
+			logger.log("Release lock for data processing", Level.TRACE);
 		}
 	}
 }

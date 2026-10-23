@@ -6,6 +6,25 @@
   <property name="src" location="src/concord4pi"/>
   <property name="build" location="build"/>
   <property name="dist" location="dist"/>
+  <property name="test.src" location="test"/>
+  <property name="test.build" location="build-test"/>
+  <property name="test.lib" location="lib/test"/>
+
+  <!-- runtime dependencies only; test-only jars live in ${test.lib} -->
+  <path id="lib.classpath">
+    <fileset dir="lib">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+
+  <path id="test.classpath">
+    <pathelement location="${test.build}"/>
+    <pathelement location="${build}"/>
+    <path refid="lib.classpath"/>
+    <fileset dir="${test.lib}">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
 
   <target name="init">
     <!-- Create the time stamp -->
@@ -17,12 +36,10 @@
   <target name="compile" depends="init"
         description="compile the source">
     <!-- Compile the Java code from ${src} into ${build} -->
-    <javac srcdir="${src}" destdir="${build}">
+    <javac srcdir="${src}" destdir="${build}" includeantruntime="false">
         <classpath>
             <pathelement path="${classpath}"/>
-            <fileset dir="lib">
-            <include name="**/*.jar"/>
-            </fileset>
+            <path refid="lib.classpath"/>
         </classpath>
     </javac>
   </target>
@@ -36,10 +53,35 @@
     <jar jarfile="jars/concord4pi.jar" basedir="${build}"/>
   </target>
 
+  <target name="compile-test" depends="compile"
+        description="compile the unit tests">
+    <mkdir dir="${test.build}"/>
+    <javac srcdir="${test.src}" destdir="${test.build}" includeantruntime="false">
+        <classpath refid="test.classpath"/>
+    </javac>
+    <!-- keeps test output quiet; see test/tinylog.properties -->
+    <copy file="${test.src}/tinylog.properties" todir="${test.build}"/>
+  </target>
+
+  <target name="test" depends="compile-test"
+        description="run the unit tests">
+    <java classname="org.junit.platform.console.ConsoleLauncher" fork="true" failonerror="true">
+        <classpath refid="test.classpath"/>
+        <arg value="execute"/>
+        <arg value="--scan-classpath"/>
+        <arg value="${test.build}"/>
+        <arg value="--fail-if-no-tests"/>
+        <arg value="--details=tree"/>
+        <arg value="--disable-ansi-colors"/>
+        <arg value="--disable-banner"/>
+    </java>
+  </target>
+
   <target name="clean"
         description="clean up">
-    <!-- Delete the ${build} and ${dist} directory trees -->
+    <!-- Delete the ${build}, ${test.build} and ${dist} directory trees -->
     <delete dir="${build}"/>
+    <delete dir="${test.build}"/>
     <delete dir="${dist}"/>
   </target>
 </project>

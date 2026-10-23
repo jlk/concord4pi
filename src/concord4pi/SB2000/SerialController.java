@@ -22,7 +22,12 @@ public class SerialController {
 		this.logger = logger;
 		setupSerialPort();
 	}
-	
+
+	//for test doubles: does not open a serial port
+	protected SerialController(LogEngine logger) {
+		this.logger = logger;
+	}
+
 	public void setupSerialPort() {
 		serialPort = SerialPort.getCommPort(deviceName);
 		serialPort.setComPortParameters(baudRate, dataBits, stopBits, parity);

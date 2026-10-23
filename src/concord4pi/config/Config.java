@@ -8,9 +8,15 @@ import java.util.Properties;
 public class Config {
 	
 	private static Properties prop;
-	private static final String configFileName = "config/concord4pi.config";
+	private static final String defaultConfigFileName = "config/concord4pi.config";
+	private final String configFileName;
 
 	public Config() {
+		this(defaultConfigFileName);
+	}
+
+	public Config(String configFileName) {
+		this.configFileName = configFileName;
 		prop = new Properties();
 		setupConfigReader();
 	}

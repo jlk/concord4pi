@@ -41,6 +41,15 @@ To build from the command line, in this directory run:
 ant
 ```
 
+## Running tests
+Unit tests live in `test/` and use JUnit 5, which is included under `lib/test/`. No serial device or MQTT broker is needed. To run them:
+
+```
+ant test
+```
+
+The build fails if any test fails. Tests marked `Known bug: ...` are skipped on purpose: each one describes correct behavior that the code doesn't have yet, and it can be enabled once that bug is fixed. A normal `ant` build doesn't run the tests or include them in the jar.
+
 ## Configuration
 Configuration happens in the two files under the `config` directory:
 
