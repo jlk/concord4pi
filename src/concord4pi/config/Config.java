@@ -49,7 +49,11 @@ public class Config {
 	}
 	
 	public int getPropertyInt(String key) {
-		return Integer.parseInt(prop.getProperty(key));
+		String value = prop.getProperty(key);
+		if (value == null) {
+			throw new IllegalArgumentException("Property '" + key + "' not found in config file");
+		}
+		return Integer.parseInt(value);
 	}
 	
 	public String getProperty(String key) {
@@ -60,7 +64,8 @@ public class Config {
 		boolean isValid = true;
 		
 		//validity checks here
-		if(getSerialDeviceName().isEmpty()) { isValid = false; }
+		String serialDevice = getSerialDeviceName();
+		if(serialDevice == null || serialDevice.isEmpty()) { isValid = false; }
 		
 		return isValid;
 	}
