@@ -32,7 +32,7 @@ concord4pi bridges a Concord alarm panel's SuperBus 2000 (SB2000) Automation Mod
   - `FakeSerialController`: records writes as `"ACK"`, `"NAK"` or the message text, without `MESSAGE_START`.
 - **Known-bug convention:** each defect under "Known defects" has a test asserting the *correct* behavior, marked `@Disabled("Known bug: ...")`, so the suite stays green. When you fix a bug, delete its `@Disabled` line and the test becomes the check. When you find a new bug, add a disabled test the same way and list it under "Known defects". To confirm the disabled tests still fail, run the launcher with `--config=junit.jupiter.conditions.deactivate=org.junit.*DisabledCondition`.
 - `SB2000ControllerTest` must be in package `concord4pi.SB2000`. It uses the package-private seams (see "Testability notes") and calls `processIncomingMessages()` / `processOutgoingMessages()` directly to step the run loop, without threads.
-- `MessageProcessorTest` fixtures are built from the handlers' field offsets, not from captured panel traffic.
+- `MessageProcessorTest` fixtures are built from the handlers' field offsets. `RealFramesTest` replays verbatim frames captured from the user's panel, which confirms those offsets on real data. Only non-identifying zone names are included, and no `09` frames. This panel reports its partition ID as `0100` (partition 1, area 0), not `0001`.
 - Not covered: `MQTTService`, `MainController`, `concord4pi`, real serial I/O, and thread timing.
 
 ## Architecture
@@ -73,10 +73,23 @@ Don't write tests or code that rely on these behaviors as if they were correct.
 - **History lists are backwards.** Zone text, partition text, key fob commands, trouble events, and siren sync events append to the end of the list, and then trim by removing the *last* entry. Getters read index 0. As a result `getText()`, `getKeyFobCommandText()`, `getMostRecent*()` and similar return the *oldest* entry, and entries after the fifth are dropped. `AlarmZone.setKeyFobCommand` therefore publishes the wrong `/keyFob/command/text`. `AlarmZone.getPastText()` and `getPastKeyFobCommand()` throw on an empty list.
 - **`AlarmTemperature.myAddress()`** uses `parent.getID()` instead of `parent.myAddress()`, which produces the topic `0001/temperature` (no leading `/` and no `partitionarea`).
 - **`AlarmAreaPartition.getFeatureSetText()`** uses an `else if` chain, so it reports only the first set feature.
-- **`AlarmArmingLevel.getDelayFlagsText()`** always reports `STANDARD` (it masks with 0). `END DELAY` can never match, because the mask and the flag are different bits. `setDelayFlags` publishes the number and the text to the same `/delayFlags` topic.
+- **`AlarmArmingLevel` delay flags are decoded from the wrong bits.** Real panel traffic shows exit delay is bit 6 (`0x40`, sent right after arming) and end-of-delay is bit 7 (`0x80`, e.g. `0xC0` when an exit delay finishes). By the protocol's bit numbering, the delay length is bits 4–5 (`0x10` extended, `0x20` twice extended). The code's masks are one bit low (`0x20`, `0x40`, `0x18`). The standard/extended check also masks with 0, so it always reports `STANDARD`. `setDelayFlags` publishes the number and the text to the same `/delayFlags` topic.
 - **`AlarmArmingLevel.isArmed()`** is inverted: it returns true for level ≤ 1 (Zone Test or Off). It has no callers yet.
 - **`AlarmAreaPartition.isArea()` / `isPartition()`** parse the hex ID halves with radix 10, so an ID containing A–F (for example `000A`) throws a `NumberFormatException`. `isArea()` runs every time arming-level text is built.
 - **Radix:** `MessageProcessor` parses arming level (in `partitionData` and `armingLevel`) and feature state with radix 10. Every other field uses radix 16. Feature state values of `0x0A` and above decode wrong.
+- **Unhandled command codes.** The panel sends these, but `MessageProcessor` has no `case` for them, so each one logs `Received Message ... without handler` at WARN and is otherwise ignored. They're mostly answers to the startup equipment-list request. In a real capture (2026-10-23), the frames were `05` ×6, `06` ×9, `07` ×6, `08` ×1, `09` ×3, `0A` ×16, `0C` ×6 and `2301` ×12. Per the SB2000 automation protocol (names from memory, so check against the protocol document before implementing), they are:
+  - `05` SuperBus device data (constant `COMMANDCODE_SELSUPERBUSDEVICE` exists)
+  - `06` SuperBus device capabilities
+  - `07` output data
+  - `08` equipment list complete
+  - `09` user data
+  - `0A` schedule data
+  - `0C` light-to-sensor attachment
+  - `2301` lights state (constant `COMMANDCODE_LIGHTSSTATE` exists)
+
+  `RealFramesTest.UNHANDLED` holds one real example of each code except `09`.
+- **`09` user data appears to contain user codes (PINs) in plain BCD**, including the system master and installer codes. Never commit `09` frames, and never publish those bytes to MQTT if a handler is ever added. Treat debug logs as sensitive, because `SB2000Controller` logs every raw frame at DEBUG.
+- **Text tokens:** word tokens (such as `6E` FRONT and `57` DOOR) are concatenated with no space, which gives `FRONTDOOR`. The panel separates letter tokens with an explicit space token (`2B`), but not word tokens. Tokens `FB` and `FE` have no mapping and decode to `""`. In touchpad text, `FB` appears to separate the two display lines, so `*FRI OCT 23` and `03:40 PM P1` run together as `...2303:40...`.
 - **`MessageProcessor.partitionData`** (command `04`) decodes the partition's text tokens and then discards them. The text is never stored or published, which looks unfinished.
 - **`MessageProcessor.timeAndDate`** passes the panel's 1-based month to `Calendar` (which is 0-based) and the 2-digit year as is.
 - **`SB2000Controller` framing:** if leading bytes aren't `MESSAGE_START`, ACK, or NAK, the whole buffer is requeued, and processing waits until more serial data arrives. The leading garbage is then framed as a message and NAKed. Every pending `IOMessage` is written immediately, without waiting for each ACK. ACKs and NAKs are matched to `txVerifyQueue` by order alone.

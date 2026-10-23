@@ -95,28 +95,38 @@ class AlarmArmingLevelTest {
 		assertEquals("STANDARD|ENTRY DELAY|START DELAY", armingLevel.getDelayFlagsText());
 	}
 
-	@Test
-	void delayFlagsExitBit() {
-		armingLevel.setDelayFlags(0b100000);
+	//bit positions per real panel traffic (see RealFramesTest): bits 4-5 delay length,
+	//bit 6 (0x40) exit delay, bit 7 (0x80) end of delay
 
-		assertEquals(0b100000, armingLevel.getDelayFlags());
+	@Test
+	void delayFlagsAreStored() {
+		armingLevel.setDelayFlags(0x40);
+
+		assertEquals(0x40, armingLevel.getDelayFlags());
+	}
+
+	@Test
+	@Disabled("Known bug: delay flag masks are one bit low; the panel sends exit delay as bit 6 (0x40)")
+	void delayFlagsExitBit() {
+		armingLevel.setDelayFlags(0x40);
+
 		assertTrue(armingLevel.getDelayFlagsText().contains("EXIT DELAY"));
 	}
 
 	@Test
-	@Disabled("Known bug: getDelayFlagsText() masks with 0, so it always reports STANDARD")
+	@Disabled("Known bug: getDelayFlagsText() masks with 0 and uses bits 3-4, so it always reports STANDARD")
 	void delayFlagsExtendedAndTwiceExtended() {
-		armingLevel.setDelayFlags(0b01000);
+		armingLevel.setDelayFlags(0x10);
 		assertTrue(armingLevel.getDelayFlagsText().startsWith("EXTENDED"));
 
-		armingLevel.setDelayFlags(0b10000);
+		armingLevel.setDelayFlags(0x20);
 		assertTrue(armingLevel.getDelayFlagsText().startsWith("TWICE EXTENDED"));
 	}
 
 	@Test
-	@Disabled("Known bug: DELAYFLAG_END is the same bit as DELAYFLAG_EXIT, so END DELAY never matches bit 7")
+	@Disabled("Known bug: delay flag masks are one bit low; the panel sends end of delay as bit 7 (0x80)")
 	void delayFlagsEndBit() {
-		armingLevel.setDelayFlags(0b1000000);
+		armingLevel.setDelayFlags(0x80);
 
 		assertTrue(armingLevel.getDelayFlagsText().contains("END DELAY"));
 	}
@@ -124,9 +134,9 @@ class AlarmArmingLevelTest {
 	@Test
 	@Disabled("Known bug: setDelayFlags() publishes the number and the text to the same /delayFlags topic")
 	void delayFlagsNumberAndTextUseSeparateTopics() {
-		armingLevel.setDelayFlags(0b100000);
+		armingLevel.setDelayFlags(0x40);
 
-		assertEquals("32", recorder.valueOf(ARMING + "/delayFlags"));
+		assertEquals("64", recorder.valueOf(ARMING + "/delayFlags"));
 		assertEquals(armingLevel.getDelayFlagsText(), recorder.valueOf(ARMING + "/delayFlags/text"));
 	}
 }

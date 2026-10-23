@@ -188,5 +188,8 @@ These live in the test class for the code they cover, not in a separate class. W
 
 ## Open questions
 
-1. Fixture data for `MessageProcessorTest` is built from the field offsets the parser uses, not from captured panel traffic. **Pending:** you're turning on debug logging to capture real frames. Once they're captured, add them as regression fixtures, with the panel serial number and any personal zone names scrubbed.
+1. Fixture data for `MessageProcessorTest` is built from the field offsets the parser uses, not from captured panel traffic. **✅ Resolved 2026-10-23:** a debug capture of 775 valid frames was replayed through `MessageProcessor` with no exceptions. Curated frames became `test/concord4pi/RealFramesTest.java` (15 tests, 3 disabled). Only non-identifying zone names were kept, and the `09` user-data frames were excluded because they appear to contain user codes. Then the capture file was deleted. The capture confirmed the handlers' field offsets, and it turned up the following:
+   - the unhandled command codes listed in CLAUDE.md
+   - word-token spacing and the unmapped `FB`/`FE` tokens
+   - the delay flag masks being one bit low (the capture had no `01` panel-type frame, and the `AlarmArmingLevelTest` exit-bit test that asserted `0x20` was corrected to `0x40`)
 2. ~~Should the Docker build run `ant test` too?~~ **Decided: no.** The Dockerfile stays unchanged.

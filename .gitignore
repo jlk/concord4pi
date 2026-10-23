@@ -9,3 +9,4 @@ build
 dist
 concord4pi.jar
 build-test
+*.log
