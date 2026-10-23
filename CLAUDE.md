@@ -9,15 +9,16 @@ concord4pi bridges a Concord alarm panel's SuperBus 2000 (SB2000) Automation Mod
 ## Build and run
 
 - Build: `ant` (default target `dist`). This compiles `src/concord4pi` against every jar in `lib/` into `build/`, then writes **`jars/concord4pi.jar`, a file tracked in git**. Rebuilding changes a committed artifact, so check whether the user wants the jar committed.
+  - **Don't commit the jar that ant builds.** The committed `jars/concord4pi.jar` (last changed in `e1659f0`) is a ~1.3 MB jar that ant can't reproduce. It bundles Paho, tinylog and jSerialComm, has `Main-Class: concord4pi.concord4pi`, and is Java 17 bytecode. `startup/start.sh` depends on that, because it runs the jar with no other classpath. Ant's jar (~57 KB) has only the project classes and no `Main-Class`. After running `ant`, restore it with `git checkout -- jars/concord4pi.jar`. Docker is unaffected, because it rebuilds with ant and uses the full classpath.
 - Clean: `ant clean`
-- Language level: the Docker image builds with JDK 15 (`openjdk:15-jdk-alpine`), so keep source compatible with Java 15. Don't use records, sealed types, or pattern-matching `switch`.
+- Language level: Java 21. The Docker image is `eclipse-temurin:21-jdk-alpine`, and it runs on an amd64 server. `build.xml` compiles with `release="${java.release}"` (21), so a jar built on a newer local JDK still runs in the image. If the base image changes, change `java.release` with it. The `openjdk` Docker images are deprecated, and the old `openjdk:15-jdk-alpine` tag no longer exists.
 - For a quick compile without ant: `javac -d <outdir> -cp <lib jars> $(find src -name '*.java')`.
 - Run from the repo root. `Config` reads the relative path `config/concord4pi.config`, and the app exits if `SerialDevice` is unset or the port can't be opened:
   ```
   java -Dtinylog.configuration=config/log.config -cp lib/jSerialComm-2.9.3.jar:jars/concord4pi.jar:lib/org.eclipse.paho.client.mqttv3-1.1.1.jar:lib/tinylog-api-2.6.0.jar:lib/tinylog-impl-2.6.0.jar concord4pi.concord4pi
   ```
   The ant build does not bundle the `lib/` jars into the output jar, so the full classpath is required. `startup/entrypoint.sh` uses this form. The classpath in the README, and `startup/start.sh` (jar only), are out of date.
-- Docker: `docker build -t concord4pi .` builds with ant inside `openjdk:15-jdk-alpine`, and uses `sed` to switch `config/log.config` from file to console logging.
+- Docker: `docker build -t concord4pi .` builds with ant inside `eclipse-temurin:21-jdk-alpine` (amd64 and arm64 only), and uses `sed` to switch `config/log.config` from file to console logging. The JSON-form `ENTRYPOINT` and the `exec java` in `startup/entrypoint.sh` make the JVM PID 1, so `docker stop` delivers SIGTERM and `MainController`'s shutdown hook runs. Keep both.
 - Without hardware: `debug/setupDebugSerial` uses `socat` to create a linked pseudo-serial pair (`debug/SERIALIN` / `debug/SERIALOUT`) with the SB2000 line settings (9600 8O1). Point `SerialDevice` at one end and write to the other.
 - When upgrading a dependency in `lib/`, update the versioned jar names in `startup/entrypoint.sh` (and in the README).
 
@@ -80,6 +81,7 @@ Don't write tests or code that rely on these behaviors as if they were correct.
 - **`MessageProcessor.timeAndDate`** passes the panel's 1-based month to `Calendar` (which is 0-based) and the 2-digit year as is.
 - **`SB2000Controller` framing:** if leading bytes aren't `MESSAGE_START`, ACK, or NAK, the whole buffer is requeued, and processing waits until more serial data arrives. The leading garbage is then framed as a message and NAKed. Every pending `IOMessage` is written immediately, without waiting for each ACK. ACKs and NAKs are matched to `txVerifyQueue` by order alone.
 - **`SerialController.setupSerialPort()`**: a malformed `SerialDevice` value (such as the placeholder in the committed config) makes `SerialPort.getCommPort` throw an uncaught `SerialPortInvalidPortException`, so the friendly "could not be opened" message is never shown.
+- **Shutdown runs twice:** on SIGTERM, the `appTerminator` shutdown hook calls `MainController.shutdown()` and sets `isRunning = false`. The main loop then exits, and `concord4pi.go()` calls `shutdown()` again, possibly at the same time as the hook. With `docker stop`, the log shows "Serial Port ... CLOSED!" twice. It's harmless so far, because the second close succeeds.
 - **`MainController.addBroadcasters()`** calls `.equals` on `MQTTBroadcaster` and `MQTTEnableCommands` without a null check. A missing key causes an NPE.
 
 ## Performance notes (current branch is `perf-improvements`)

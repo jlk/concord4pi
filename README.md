@@ -33,7 +33,7 @@ This software requires an computer attached to the SB2000 via serial interface w
  - RS232 Serial to TTL Converter Board (hardwired to RPI Zero W GPIO serial pins)
 
 ## Building
-This code has been tested to build with JDK13 and a modern version of [ant](https://ant.apache.org/), on MacOS Catalina and Ubuntu 19.10.
+This code builds with JDK 21 or newer and a modern version of [ant](https://ant.apache.org/). The build targets Java 21, so the jar runs on any Java 21+ runtime, including the Docker image (`eclipse-temurin:21-jdk-alpine`).
 
 To build from the command line, in this directory run:
 

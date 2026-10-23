@@ -2,7 +2,7 @@
 
 Status: ✅ Implemented 2026-10-23. 137 tests: 120 passing, 17 known-bug tests skipped. Still open:
 - Commit the JUnit jar and the rest of the work (waiting for you to ask).
-- Run the tests on a real Java 15 JVM in Docker (see section 6).
+- ~~Run the tests on a real Java 21 JVM in Docker.~~ Done 2026-10-23 (see section 6). The project moved from Java 15 to 21 on 2026-10-23, after this plan was carried out.
 - Add captured panel frames as fixtures (open question 1).
 
 Created 2026-10-23.
@@ -23,6 +23,7 @@ Principles:
   - Why 5.x and not JUnit 6: JUnit 6 requires Java 17, and the Docker image builds with JDK 15.
 - [x] No mocking library. The fakes are hand-written, because only two are needed (a broadcaster and a serial controller).
 - [x] Test sources must stay Java 15 compatible. *This is an ongoing rule, and section 6 verifies it.*
+  - **Update 2026-10-23:** `openjdk:15-jdk-alpine` no longer exists, so the Docker image moved to `eclipse-temurin:21-jdk-alpine` (deployed on amd64). The target is now Java 21, enforced by `release="${java.release}"` in `build.xml`. JUnit 6 is now possible but isn't needed.
 
 ## 2. Build changes (`build.xml`, `.gitignore`) ✅ Completed 2026-10-23
 
@@ -156,6 +157,13 @@ These live in the test class for the code they cover, not in a separate class. W
 - [ ] Java 15 compatibility: run `ant test` inside `openjdk:15-jdk-alpine` through Docker. *Not run: the Docker daemon wasn't running.*
   - [x] Substitute check: compiled `src/` and `test/` with `javac --release 15`, which uses the Java 15 API and language level. Both compiled cleanly to class-file major version 59 (Java 15), and that build runs 120 passing / 17 skipped. It still hasn't been run on a real Java 15 JVM. To do that, start Docker and run:
     `docker run --rm -v "$PWD":/src:ro openjdk:15-jdk-alpine sh -c 'apk add -q apache-ant && cp -r /src /work && cd /work && ant clean test'`
+  - **Update 2026-10-23:** that image no longer exists. The target is now Java 21, and `build.xml` compiles `src/` and `test/` with `release="21"`. To check on a real Java 21 JVM, run:
+    `docker run --rm --platform linux/amd64 -v "$PWD":/src:ro eclipse-temurin:21-jdk-alpine sh -c 'apk add -q apache-ant && cp -r /src /work && cd /work && ant clean test'`
+  - [x] **Done 2026-10-23 (Colima, emulated x86_64):** with Temurin 21.0.12.1 and Alpine's ant 1.10.18, that command gives 137 found, 120 passing, 17 skipped, BUILD SUCCESSFUL.
+  - [x] Also built the real image with `docker build --platform linux/amd64 .` (succeeded, 387 MB). Then started the app inside it through `startup/entrypoint.sh`, with `SerialDevice=/dev/null`. Logging initialized, jSerialComm's native library loaded on Alpine/musl x86_64, and the app reached the friendly "Serial Port (/dev/null) could not be opened!" exit. The classpath in `entrypoint.sh` therefore matches the libraries in the image.
+  - Warnings that existed before the Java 21 move:
+    - Docker reported `JSONArgsRecommended`: the `ENTRYPOINT` used shell form, so the JVM didn't receive SIGTERM from `docker stop`. **Fixed 2026-10-23** with a JSON-form `ENTRYPOINT` plus `exec java` in `startup/entrypoint.sh`. Verified in Colima with `SerialDevice=/dev/ptmx`: java is PID 1, and `docker stop` returns in under a second (it was the 10 s timeout) with exit code 143. The log shows "Received termination signal" and "Serial Port (/dev/ptmx) CLOSED!".
+    - The JVM warns that `libjSerialComm.so` 2.9.3 "might have disabled stack guard". This is still present and harmless.
 - [x] `ant` (dist) still builds. `jars/concord4pi.jar` has 36 entries, with no JUnit, test or `testsupport` classes. The rebuilt jar was restored to the committed version afterward.
 - [x] Temporarily broke the checksum calculation (`IOMessage.calculateCheckSum` returning +1): 17 tests failed and the ant build failed. After reverting, `git diff` on the file was empty and the suite was green again (120 passing / 17 skipped).
 

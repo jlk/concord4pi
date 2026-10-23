@@ -9,6 +9,8 @@
   <property name="test.src" location="test"/>
   <property name="test.build" location="build-test"/>
   <property name="test.lib" location="lib/test"/>
+  <!-- Java version of the Docker image (eclipse-temurin:21-jdk-alpine) -->
+  <property name="java.release" value="21"/>
 
   <!-- runtime dependencies only; test-only jars live in ${test.lib} -->
   <path id="lib.classpath">
@@ -36,7 +38,8 @@
   <target name="compile" depends="init"
         description="compile the source">
     <!-- Compile the Java code from ${src} into ${build} -->
-    <javac srcdir="${src}" destdir="${build}" includeantruntime="false">
+    <!-- release matches the Docker image's JDK, so jars built on newer local JDKs still run there -->
+    <javac srcdir="${src}" destdir="${build}" includeantruntime="false" release="${java.release}">
         <classpath>
             <pathelement path="${classpath}"/>
             <path refid="lib.classpath"/>
@@ -56,7 +59,7 @@
   <target name="compile-test" depends="compile"
         description="compile the unit tests">
     <mkdir dir="${test.build}"/>
-    <javac srcdir="${test.src}" destdir="${test.build}" includeantruntime="false">
+    <javac srcdir="${test.src}" destdir="${test.build}" includeantruntime="false" release="${java.release}">
         <classpath refid="test.classpath"/>
     </javac>
     <!-- keeps test output quiet; see test/tinylog.properties -->
