@@ -41,7 +41,8 @@ public class AlarmTouchpad implements IAlarmObject {
 			tokenString.append(SB2000Constants.convertTextToken(tokens[i]));
 		}
 		
-		return tokenString.toString();
+		//the panel ends the second line with the same FB token that separates the lines
+		return tokenString.toString().stripTrailing();
 	}
 	
 	public void setBroadcastFlag(boolean isBroadcast) {

@@ -204,11 +204,19 @@ class RealFramesTest {
 	}
 
 	@Test
-	@Disabled("Known bug: text tokens FB and FE are unmapped, so the touchpad's two lines run together")
 	void touchpadLinesAreSeparated() {
 		process(TOUCHPAD_DATE);
 
 		assertFalse(recorder.valueOf(PARTITION + "/touchpad/text").contains("2303:40"));
+	}
+
+	@Test
+	void touchpadTextIsOneLineWithNoTrailingSpace() {
+		//FE at the start decodes to nothing; FB between the lines becomes a space, and the FB
+		//that ends the second line doesn't leave a trailing one
+		process(TOUCHPAD_DATE);
+
+		assertEquals("*FRI OCT 23 03:40 PM P1", recorder.valueOf(PARTITION + "/touchpad/text"));
 	}
 
 	@Test

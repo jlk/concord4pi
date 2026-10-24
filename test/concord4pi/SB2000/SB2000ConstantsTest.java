@@ -28,6 +28,17 @@ class SB2000ConstantsTest {
 	}
 
 	@Test
+	void lineSeparatorTokenBecomesASpace() {
+		assertEquals(" ", SB2000Constants.convertTextToken("FB"));
+	}
+
+	@Test
+	void unconfirmedControlTokenBecomesEmptyString() {
+		//FE leads touchpad text, but what it means isn't confirmed
+		assertEquals("", SB2000Constants.convertTextToken("FE"));
+	}
+
+	@Test
 	void unknownTokenBecomesEmptyString() {
 		assertEquals("", SB2000Constants.convertTextToken("ZZ"));
 	}

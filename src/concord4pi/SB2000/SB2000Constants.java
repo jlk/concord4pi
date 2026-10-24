@@ -684,15 +684,19 @@ public class SB2000Constants {
 			case "D8":
 				tokenName="HOME";
 				break;
+			//separates the two lines of touchpad text.  A space, not a newline, so the text
+			//stays on one line for MQTT consumers
+			case "FB":
+				tokenName=" ";
+				break;
+			//these are lowercase, and IOMessage's hex is uppercase, so they never match: what
+			//they would produce (newlines, <blink> markers) hasn't been confirmed on a real panel
 			case "f9":
 				tokenName="\n";
 				break;
 			case "fa":
 				tokenName="<spc>";
 				break; 
-			case "fb":
-				tokenName="\n";
-				break;
 			case "fd":
 				tokenName="<bs>";
 				break; 
