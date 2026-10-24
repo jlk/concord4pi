@@ -121,7 +121,6 @@ class IOMessageTest {
 	}
 
 	@Test
-	@Disabled("Known bug: a one-byte message (length byte 00) reads past the end of the array instead of parsing as invalid")
 	void zeroLengthMessageIsInvalidWithoutThrowing() {
 		//messageLength 0 equals encodedMessage.length - 1, so initMessage treats the length as
 		//valid and then reads encodedMessage[1] for the command code

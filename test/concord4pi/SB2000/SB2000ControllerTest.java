@@ -176,7 +176,6 @@ class SB2000ControllerTest {
 	}
 
 	@Test
-	@Disabled("Known bug: a frame with a length byte of 00 throws out of IOMessage, which kills the serial thread")
 	void zeroLengthFrameIsNakedWithoutThrowing() {
 		//the panel would never send this, but line noise after a MESSAGE_START can produce it
 		assertDoesNotThrow(() -> receive(String.valueOf((char)SB2000Constants.MESSAGE_START) + "00A"));

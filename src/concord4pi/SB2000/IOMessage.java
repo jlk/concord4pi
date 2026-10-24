@@ -47,7 +47,8 @@ public class IOMessage implements IBaseMessage {
 		if(encodedMessage.length > 0) {
 			messageLength = encodedMessage[0];
 	
-			if(messageLength == (encodedMessage.length - 1)) {
+			//a length of 0 would leave no room for the command code
+			if(messageLength > 0 && messageLength == (encodedMessage.length - 1)) {
 				//length of the message is valid.
 				checksum = encodedMessage[messageLength];
 		
