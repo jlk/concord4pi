@@ -105,6 +105,8 @@ class RealFramesTest {
 
 		assertTrue(system.getAreaPartitionByID("0100").isPartition());
 		assertEquals("Off", recorder.valueOf(PARTITION + "/armingLevel/text"));
+		//this panel sends no partition text, so there's nothing to publish
+		assertFalse(recorder.published(PARTITION + "/text"));
 	}
 
 	@Test

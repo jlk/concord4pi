@@ -85,9 +85,18 @@ class MessageProcessorTest {
 	}
 
 	@Test
-	void partitionData04DecodesButDoesNotStoreItsText() {
-		//existing behavior: the text tokens are decoded and then discarded
+	void partitionData04StoresAndPublishesItsText() {
+		//text tokens "P", "1"
 		process("04", "0001" + "03" + "2001");
+
+		assertEquals("P1", system.getAreaPartitionByID("0001").getText());
+		assertEquals("P1", recorder.valueOf(PARTITION + "/text"));
+	}
+
+	@Test
+	void partitionData04WithNoTextPublishesNoText() {
+		//what this user's panel sends (see RealFramesTest): arming level only
+		process("04", "0001" + "03");
 
 		assertEquals("", system.getAreaPartitionByID("0001").getText());
 		assertFalse(recorder.published(PARTITION + "/text"));

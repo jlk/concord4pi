@@ -182,8 +182,16 @@ public class MessageProcessor {
 			text.append(SB2000Constants.convertTextToken(textTokens[i]));
 		}
 		
+		AlarmAreaPartition theAP = alarmData.getAreaPartitionByID(partitionArea);
+
 		// set the new Arming Level
-		alarmData.getAreaPartitionByID(partitionArea).getArmingLevel().setArmingLevel(armingLevel);
+		theAP.getArmingLevel().setArmingLevel(armingLevel);
+
+		//not every panel sends partition text (the one RealFramesTest was captured from doesn't),
+		//so only store it when there is some, rather than publish an empty /text every report
+		if(text.length() > 0) {
+			theAP.setText(text.toString());
+		}
 	}
 
 	private void zoneStatus(IOMessage theMessage) {
