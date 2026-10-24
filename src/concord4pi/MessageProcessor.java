@@ -330,8 +330,11 @@ public class MessageProcessor {
 		int day = Integer.parseInt(data.substring(6, 8), 16);
 		int year = Integer.parseInt(data.substring(8, 10), 16);
 		
+		//the panel sends a 1-based month and a 2-digit year; Calendar wants a 0-based month and
+		//the full year.  Clear the fields the panel doesn't send, or the bridge's clock fills them
 		Calendar dateTime = Calendar.getInstance();
-		dateTime.set(year, month, day, hour, minute);
+		dateTime.clear();
+		dateTime.set(2000 + year, month - 1, day, hour, minute);
 		
 		alarmData.setDate(dateTime.getTime());
 

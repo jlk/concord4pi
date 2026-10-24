@@ -219,8 +219,44 @@ class MessageProcessorTest {
 		assertTrue(recorder.published("/date"));
 	}
 
+	private Calendar processDate(String hour, String minute, String month, String day, String year) {
+		process("220E", hour + minute + month + day + year);
+		Calendar date = Calendar.getInstance();
+		date.setTime(system.getDate());
+		return date;
+	}
+
 	@Test
-	@Disabled("Known bug: the 1-based panel month is passed to 0-based Calendar, and the 2-digit year is used as is")
+	void timeAndDate220EHandlesTheFirstAndLastMonths() {
+		Calendar january = processDate("00", "00", "01", "01", "1B");
+		assertEquals(Calendar.JANUARY, january.get(Calendar.MONTH));
+		assertEquals(1, january.get(Calendar.DAY_OF_MONTH));
+		assertEquals(2027, january.get(Calendar.YEAR));
+
+		Calendar december = processDate("17", "3B", "0C", "1F", "1A");
+		assertEquals(Calendar.DECEMBER, december.get(Calendar.MONTH));
+		assertEquals(31, december.get(Calendar.DAY_OF_MONTH));
+		assertEquals(23, december.get(Calendar.HOUR_OF_DAY));
+		assertEquals(59, december.get(Calendar.MINUTE));
+	}
+
+	@Test
+	void timeAndDate220EHasNoSecondsOrMilliseconds() {
+		//the panel sends minutes; the bridge's own clock shouldn't leak into the seconds
+		Calendar date = processDate("0E", "1E", "0A", "17", "1A");
+
+		assertEquals(0, date.get(Calendar.SECOND));
+		assertEquals(0, date.get(Calendar.MILLISECOND));
+	}
+
+	@Test
+	void timeAndDate220EPublishesThePanelsDate() {
+		processDate("0E", "1E", "0A", "17", "1A");
+
+		assertTrue(recorder.valueOf("/date").startsWith("Fri Oct 23 14:30:00"), recorder.valueOf("/date"));
+	}
+
+	@Test
 	void timeAndDate220EProducesTheRightDate() {
 		//14:30 on 23 October 2026
 		process("220E", "0E" + "1E" + "0A" + "17" + "1A");
