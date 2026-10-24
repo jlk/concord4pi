@@ -2,6 +2,7 @@ package concord4pi.SB2000;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import concord4pi.testsupport.Messages;
@@ -117,6 +118,17 @@ class IOMessageTest {
 
 		assertEquals(frame, parse(frame).toString());
 		assertEquals(frame, parse(frame.toLowerCase()).toString());
+	}
+
+	@Test
+	@Disabled("Known bug: a one-byte message (length byte 00) reads past the end of the array instead of parsing as invalid")
+	void zeroLengthMessageIsInvalidWithoutThrowing() {
+		//messageLength 0 equals encodedMessage.length - 1, so initMessage treats the length as
+		//valid and then reads encodedMessage[1] for the command code
+		IOMessage message = assertDoesNotThrow(() -> parse("00"));
+
+		assertFalse(message.isValid());
+		assertEquals("", message.getCommandCodeString());
 	}
 
 	@Test

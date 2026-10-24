@@ -27,6 +27,9 @@ public class MainController {
 	
 	private static boolean isRunning = true;
 	
+	//only waited out when a pass found nothing to do in either direction
+	private static final long IDLE_SLEEP_MS = 50;
+	
 	public MainController(Config appConfig, LogEngine logger) {
 		this.appConfig = appConfig;
 		this.logger = logger;
@@ -49,18 +52,20 @@ public class MainController {
 
 		//loop to do work
 		while(isRunning) {
-			//reset messagesToSend on each loop
-			//initialize to a zero-based array (blank array)
-			ArrayList<IOMessage> messagesToSend = new ArrayList<IOMessage>();
+			//allocated only when there's actually something to send
+			ArrayList<IOMessage> messagesToSend = null;
+			boolean didWork = false;
 			
-			if(alarmSystem.messageWaiting()) {
-				//process the next message coming from the Automation Module
+			//process everything the Automation Module has sent, not just one message per pass:
+			//the startup equipment list alone is ~60 frames
+			while(alarmSystem.messageWaiting()) {
 				//queue up any response messages to transmit back
-				messagesToSend.addAll(
-					messageProcessor.processMessage(
-						alarmSystem.getNextMessage()
-					)
-				);
+				didWork = true;
+				ArrayList<IOMessage> responses = messageProcessor.processMessage(alarmSystem.getNextMessage());
+				if(!responses.isEmpty()) {
+					if(messagesToSend == null) { messagesToSend = new ArrayList<IOMessage>(); }
+					messagesToSend.addAll(responses);
+				}
 			}
 			
 			//process any commands coming in from the Broadcasters
@@ -71,6 +76,8 @@ public class MainController {
 			while(broadcasterList.hasNext()) {
 				IBroadcaster theBroadcaster = broadcasterList.next();
 				if(theBroadcaster.messageWaiting()) {
+					didWork = true;
+					if(messagesToSend == null) { messagesToSend = new ArrayList<IOMessage>(); }
 					messagesToSend.addAll(
 							theBroadcaster.getMessageList()
 					);
@@ -78,14 +85,17 @@ public class MainController {
 			}			
 		
 			//queue up the messages for transmission
-			if(!messagesToSend.isEmpty()) {
+			if(messagesToSend != null) {
 				alarmSystem.sendMessages(messagesToSend.toArray(new IOMessage[0]));
 			}
 
-			try {
-				Thread.sleep(50);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
+			//a pass that did something goes straight back for more; only an idle pass waits
+			if(!didWork) {
+				try {
+					Thread.sleep(IDLE_SLEEP_MS);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 			}
 		}
 	}

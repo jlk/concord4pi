@@ -17,6 +17,11 @@ public class SerialController {
 	
 	private LogEngine logger;
 	
+	//bounded wait on close: jSerialComm clears isOpen() from its own thread, so poll for
+	//it instead of spinning on it.
+	private static final long CLOSE_TIMEOUT_MS = 5000;
+	private static final long CLOSE_POLL_MS = 50;
+	
 	public SerialController(String serialPort, LogEngine logger) {
 		this.deviceName = serialPort;
 		this.logger = logger;
@@ -47,9 +52,13 @@ public class SerialController {
 	
 	public void closePort() {
 		if(serialPort.closePort()) {
-			while(serialPort.isOpen());
-			//if we get here, then we have the port closed!
-			logger.log("Serial Port (" + deviceName + ") CLOSED!", Level.INFO);
+			if(waitForPortToClose()) {
+				//if we get here, then we have the port closed!
+				logger.log("Serial Port (" + deviceName + ") CLOSED!", Level.INFO);
+			}
+			else {
+				logger.log("Serial Port (" + deviceName + ") still reports open " + CLOSE_TIMEOUT_MS + "ms after close... continuing anyway", Level.WARN);
+			}
 		}
 		else {
 			logger.log("Serial Port (" + deviceName + ") could not be closed!", Level.ERROR);
@@ -59,10 +68,28 @@ public class SerialController {
 		
 	}
 	
+	//returns true once the port reports closed, false if it hasn't within CLOSE_TIMEOUT_MS
+	private boolean waitForPortToClose() {
+		long deadline = System.currentTimeMillis() + CLOSE_TIMEOUT_MS;
+		while(serialPort.isOpen()) {
+			if(System.currentTimeMillis() >= deadline) {
+				return false;
+			}
+			try {
+				Thread.sleep(CLOSE_POLL_MS);
+			} catch (InterruptedException interrupted) {
+				//don't swallow the interrupt: let whoever is shutting us down see it
+				Thread.currentThread().interrupt();
+				return !serialPort.isOpen();
+			}
+		}
+		return true;
+	}
+	
 	public boolean isBytesWaiting() {
 		if(serialPort != null) {
 			int bytesWaiting = serialPort.bytesAvailable();
-			logger.log(bytesWaiting + " bytes waiting for read from serial port", Level.TRACE);
+			logger.log(() -> bytesWaiting + " bytes waiting for read from serial port", Level.TRACE);
 			return bytesWaiting > 0;
 		}
 		else {
@@ -99,7 +126,7 @@ public class SerialController {
 		for(int i = 0; i < numberOfBytesToRead; i++) {
 			messageData[i] = (byte) readByte();
 		}
-		logger.log("Read " + numberOfBytesToRead + " Bytes: " + (new String(messageData)), Level.TRACE);
+		logger.log(() -> "Read " + numberOfBytesToRead + " Bytes: " + (new String(messageData)), Level.TRACE);
 		return messageData;
 	}
 
@@ -107,14 +134,14 @@ public class SerialController {
 		byte[] message = new byte[1];
 		message[0] = byteToSend;
 		
-		logger.log("Message ready for writing to Serial Port [" + message[0] + "]", Level.TRACE);
+		logger.log(() -> "Message ready for writing to Serial Port [" + message[0] + "]", Level.TRACE);
 		
 		if(serialPort.writeBytes(message, message.length) != -1) {
-			logger.log("Wrote Message to Serial Port: " + message[0], Level.TRACE);
+			logger.log(() -> "Wrote Message to Serial Port: " + message[0], Level.TRACE);
 			return true;
 		}
 		else {
-			logger.log("Could not write message to Serial Port: " + message[0], Level.TRACE);
+			logger.log(() -> "Could not write message to Serial Port: " + message[0], Level.TRACE);
 			return false;
 		}
 	}
@@ -125,13 +152,13 @@ public class SerialController {
 	}
 	
 	public boolean writeBytes(byte[] message) {
-		logger.log("Message ready for writing to Serial Port [" + (new String(message)) + "]", Level.TRACE);
+		logger.log(() -> "Message ready for writing to Serial Port [" + (new String(message)) + "]", Level.TRACE);
 		
 		//first write the message start character
 		if(serialPort.writeBytes(new byte[] {SB2000Constants.MESSAGE_START}, 1) != -1) {
 			//then send the message
 			if(serialPort.writeBytes(message, message.length) != -1) {
-				logger.log("Wrote Message to Serial Port: " + new String(message), Level.TRACE);
+				logger.log(() -> "Wrote Message to Serial Port: " + new String(message), Level.TRACE);
 				return true;
 			}
 			else {

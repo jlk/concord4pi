@@ -14,6 +14,14 @@ public class IOMessage implements IBaseMessage {
 	protected byte messageLength;
 	private int transmissionCount = 0;
 	
+	private static final char[] HEX_DIGITS = "0123456789ABCDEF".toCharArray();
+	
+	//The fields these render are set in initMessage and never change afterwards, and the
+	//byte arrays are never handed out, so the strings are built once on first use.
+	private String messageString;
+	private String commandCodeString;
+	private String dataString;
+	
 	public IOMessage(byte[] rawMessage) {
 		initMessage(rawMessage);
 	}
@@ -70,7 +78,10 @@ public class IOMessage implements IBaseMessage {
 	}
 
 	public String toString() {
-		return convertEncodedByteArrayToHexString(getEncodedMessage());
+		if(messageString == null) {
+			messageString = convertEncodedByteArrayToHexString(getEncodedMessage());
+		}
+		return messageString;
 	}
 	
 	public byte[] getEncodedMessage() {
@@ -134,7 +145,10 @@ public class IOMessage implements IBaseMessage {
 	}
 	
 	public String getCommandCodeString() {
-		return convertEncodedByteArrayToHexString(commandCode);
+		if(commandCodeString == null) {
+			commandCodeString = convertEncodedByteArrayToHexString(commandCode);
+		}
+		return commandCodeString;
 	}
 	
 	public byte[] getData() {
@@ -142,7 +156,10 @@ public class IOMessage implements IBaseMessage {
 	}
 
 	public String getDataString() {
-		return convertEncodedByteArrayToHexString(data);
+		if(dataString == null) {
+			dataString = convertEncodedByteArrayToHexString(data);
+		}
+		return dataString;
 	}
 	
 	public byte getMessageCheckSum() {
@@ -173,18 +190,18 @@ public class IOMessage implements IBaseMessage {
 		if((byteArray.length % 2) != 0) {
 			return null;
 		}
-		StringBuilder tempMessage =  new StringBuilder();
+		StringBuilder tempMessage =  new StringBuilder(byteArray.length);
 		for(int i = 0; i < byteArray.length; i+=2) {
-			tempMessage.append(new String(new char[] { (char)byteArray[i], (char)byteArray[i+1]}));
+			tempMessage.append((char)byteArray[i]).append((char)byteArray[i+1]);
 		}
 		
 		return tempMessage.toString();
 	}
 	
 	private String convertEncodedByteArrayToHexString(byte[] byteArray) {
-		StringBuilder tempMessage =  new StringBuilder();
+		StringBuilder tempMessage =  new StringBuilder(byteArray.length * 2);
 		for(byte eachByte : byteArray) {
-			tempMessage.append(convertByteToStringHex(eachByte));
+			tempMessage.append(HEX_DIGITS[(eachByte >> 4) & 0x0F]).append(HEX_DIGITS[eachByte & 0x0F]);
 		}
 		
 		return tempMessage.toString();		
@@ -195,17 +212,20 @@ public class IOMessage implements IBaseMessage {
 		return String.format("%02X", byteToConvert);	
 	}
 	
-	private byte convertHexToEncodedBinary(String asciiValue) {
-		return (byte)Integer.parseInt(asciiValue, 16);
+	//parses the two characters at offset.  Integer.parseInt on the CharSequence accepts and
+	//rejects exactly what parsing a 2-character substring did, without allocating one.
+	private byte convertHexToEncodedBinary(String asciiValue, int offset) {
+		return (byte)Integer.parseInt(asciiValue, offset, offset + 2, 16);
 	}
 	
 	private byte[] convertHexStringToEncodedByteArray(String message) {
 		try {
-			String[] stringArray = message.split("(?<=\\G.{2})");
-			byte[] binaryArray = new byte[stringArray.length];
+			//the caller only ever passes an even-length string (or null, which throws here
+			//and lands in the catch, same as before)
+			byte[] binaryArray = new byte[message.length() / 2];
 	
-			for(int i = 0; i < stringArray.length; i++) {
-				binaryArray[i] = convertHexToEncodedBinary(stringArray[i]);
+			for(int i = 0; i < binaryArray.length; i++) {
+				binaryArray[i] = convertHexToEncodedBinary(message, i * 2);
 			}
 	
 			return binaryArray;
