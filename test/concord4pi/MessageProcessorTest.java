@@ -295,9 +295,29 @@ class MessageProcessorTest {
 	}
 
 	@Test
-	@Disabled("Known bug: a valid frame with a short payload throws StringIndexOutOfBoundsException, and nothing above processMessage catches it")
 	void shortPayloadDoesNotThrow() {
 		//length and checksum are valid, but feature state needs 3 data bytes and gets 1
-		assertDoesNotThrow(() -> process("220C", "00"));
+		ArrayList<IOMessage> responses = assertDoesNotThrow(() -> process("220C", "00"));
+
+		assertTrue(responses.isEmpty());
+	}
+
+	@Test
+	void shortPayloadForEveryHandlerDoesNotThrow() {
+		String[] commands = { "01", "02", "03", "04", "21", "2201", "2202", "2203", "2204", "2205",
+				"2206", "2209", "220B", "220C", "220D", "220E", "2303" };
+
+		for(String command : commands) {
+			assertDoesNotThrow(() -> process(command, ""), command);
+			assertDoesNotThrow(() -> process(command, "00"), command);
+		}
+	}
+
+	@Test
+	void messagesAfterAFailedOneAreStillProcessed() {
+		process("220C", "00");
+		process("220C", "0001" + "08");
+
+		assertEquals("LATCHKEY", recorder.valueOf(PARTITION + "/featureSet/text"));
 	}
 }

@@ -30,6 +30,19 @@ public class MessageProcessor {
 	public ArrayList<IOMessage> processMessage(IOMessage theMessage) {
 		ArrayList<IOMessage> responses = new ArrayList<IOMessage>();
 		
+		//the handlers slice fields at fixed offsets, so a short payload throws. Nothing above
+		//this catches, and an exception here would end MainController's loop, so drop the message
+		try {
+			dispatchMessage(theMessage, responses);
+		}
+		catch(RuntimeException thrown) {
+			logger.log("Could not process Message " + theMessage.toString() + ": " + thrown, Level.WARN);
+		}
+		
+		return responses;
+	}
+	
+	private void dispatchMessage(IOMessage theMessage, ArrayList<IOMessage> responses) {
 		switch (theMessage.getCommandCodeString()) {
 		
 		case SB2000Constants.COMMANDCODE_PANELTYPE:
@@ -106,8 +119,6 @@ public class MessageProcessor {
 			
 			
 		}
-
-		return responses;
 	}
 	
 	public final ArrayList<IOMessage> buildZoneInventoryQuery() {
