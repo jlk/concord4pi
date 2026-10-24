@@ -36,7 +36,7 @@ public class MessageProcessor {
 			dispatchMessage(theMessage, responses);
 		}
 		catch(RuntimeException thrown) {
-			logger.log("Could not process Message " + theMessage.toString() + ": " + thrown, Level.WARN);
+			logger.log("Could not process Message " + theMessage.getSummary() + ": " + thrown, Level.WARN);
 		}
 		
 		return responses;
@@ -114,7 +114,7 @@ public class MessageProcessor {
 			break;
 			
 		default :
-			logger.log("Received Message " + theMessage.toString() + " without handler", Level.WARN);
+			logger.log("Received Message " + theMessage.getSummary() + " without handler", Level.WARN);
 			break;
 			
 			

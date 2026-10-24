@@ -177,7 +177,7 @@ public class SB2000Controller implements Runnable {
 									txQueue.offer(theMessage);
 								}
 								else {
-									logger.log("Maximum number of retransmissions reached: [" + theMessage + "]", Level.WARN);
+									logger.log("Maximum number of retransmissions reached: " + theMessage.getSummary(), Level.WARN);
 								}
 							}
 							else {

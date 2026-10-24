@@ -131,6 +131,25 @@ class IOMessageTest {
 	}
 
 	@Test
+	void summaryNamesTheCommandAndSizeButNotTheData() {
+		//shaped like 09 user data, whose payload appears to hold user codes in BCD
+		IOMessage message = Messages.build("09", "0001" + "00F0" + "123456");
+
+		assertEquals("[command 09, 7 data bytes]", message.getSummary());
+		assertFalse(message.getSummary().contains("123456"));
+	}
+
+	@Test
+	void summaryOfATwoByteCommand() {
+		assertEquals("[command 2303, 5 data bytes]", Messages.build("2303", "0001000501").getSummary());
+	}
+
+	@Test
+	void summaryOfAnInvalidMessageHasNoCommand() {
+		assertEquals("[command , 0 data bytes]", parse("ZZ").getSummary());
+	}
+
+	@Test
 	void isNotAControlMessage() {
 		assertFalse(Messages.build("21", "0001000500").isControlMessage());
 	}

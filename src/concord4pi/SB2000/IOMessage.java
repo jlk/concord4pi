@@ -85,6 +85,12 @@ public class IOMessage implements IBaseMessage {
 		return messageString;
 	}
 	
+	//for logs above DEBUG: the data can hold user codes (09 user data, 40 keypresses), so
+	//name the command and the size without the bytes themselves
+	public String getSummary() {
+		return "[command " + getCommandCodeString() + ", " + data.length + " data bytes]";
+	}
+	
 	public byte[] getEncodedMessage() {
 		byte[] encodedMessage = new byte[commandCode.length + data.length + 2];
 		int arrayIndex = 0;
