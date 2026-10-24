@@ -54,6 +54,22 @@ class ConfigTest {
 	}
 
 	@Test
+	void missingBooleanPropertyIsFalse() throws IOException {
+		//MainController.addBroadcasters() reads MQTTBroadcaster and MQTTEnableCommands this way
+		assertFalse(configWith("SerialDevice=/dev/ttyUSB0\n").getPropertyBoolean("MQTTBroadcaster"));
+	}
+
+	@Test
+	void booleanPropertyIsTrueOnlyForTrue() throws IOException {
+		Config config = configWith("SerialDevice=/dev/ttyUSB0\nA=true\nB=false\nC=yes\nD=\n");
+
+		assertTrue(config.getPropertyBoolean("A"));
+		assertFalse(config.getPropertyBoolean("B"));
+		assertFalse(config.getPropertyBoolean("C"));
+		assertFalse(config.getPropertyBoolean("D"));
+	}
+
+	@Test
 	void getPropertyIntParsesNumbers() throws IOException {
 		Config config = configWith("Log_DefaultLevel=3\n");
 

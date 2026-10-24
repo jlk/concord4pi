@@ -66,6 +66,11 @@ public class Config {
 		return prop.getProperty(key);
 	}
 	
+	//true only for exactly "true"; a missing key is false rather than null
+	public boolean getPropertyBoolean(String key) {
+		return "true".equals(prop.getProperty(key));
+	}
+	
 	public boolean valid() {
 		boolean isValid = true;
 		

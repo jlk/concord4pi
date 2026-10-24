@@ -124,8 +124,8 @@ public class MainController {
 	}
 	
 	private void addBroadcasters() {
-		if(appConfig.getProperty("MQTTBroadcaster").equals("true")) {
-			boolean enableCommands = (appConfig.getProperty("MQTTEnableCommands").equals("true"));
+		if(appConfig.getPropertyBoolean("MQTTBroadcaster")) {
+			boolean enableCommands = appConfig.getPropertyBoolean("MQTTEnableCommands");
 			//MQTT is enabled, so add it
 			MQTTService mqtt = new MQTTService(
 					logger,
