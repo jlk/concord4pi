@@ -265,10 +265,14 @@ public class SB2000Controller implements Runnable {
 						}
 					}
 					else {
-						//couldn't find any control characters in the string.  I'll discard this text and wait for the next message to come in
-						requeueFrom(cursor);
-						logger.log(() -> "MESSAGE START code not found [" + dataToProcess.substring(1) + "]", Level.TRACE);
-						return;
+						//not a control character: line noise, or the rest of a frame whose start was
+						//lost.  Skip to the next MESSAGE_START, ACK or NAK.  A frame is ASCII hex, so
+						//none of those can appear inside one; with none left, drop the lot
+						int next = nextControlCharacter(cursor + 1);
+						int end = (next < 0) ? dataToProcess.length() : next;
+						int skipped = end - cursor;
+						logger.log(() -> "Discarding " + skipped + " bytes that aren't part of a message", Level.DEBUG);
+						cursor = end;
 					}
 				}
 			
@@ -276,7 +280,7 @@ public class SB2000Controller implements Runnable {
 				dataToProcess.setLength(0);
 			}
 			catch(RuntimeException scanFailure) {
-				//Framing a message can throw (see the zero-length frame under "Known defects").
+				//Framing a message shouldn't throw, but a zero-length frame once did.
 				//Drop the buffer before rethrowing: it's what snapshotting it used to do, and
 				//without it the bytes that threw stay at the head and every later pass rethrows
 				//on them, so the framer never makes progress again.
@@ -294,11 +298,22 @@ public class SB2000Controller implements Runnable {
 	}
 	
 	//Drops what's already been framed and puts a MESSAGE_START back in front of the rest, so
-	//the next pass re-frames from there.  Note it prepends MESSAGE_START even when the
-	//remainder didn't start with one - see "SB2000Controller framing" under the known defects.
+	//the next pass re-frames from there.  Only called just past a MESSAGE_START, so the
+	//remainder is the partial frame that followed it.
 	private void requeueFrom(int cursor) {
 		dataToProcess.delete(0, cursor);
 		dataToProcess.insert(0, MESSAGE_START_TEXT);
+	}
+	
+	//index of the next MESSAGE_START, ACK or NAK at or after from, or -1 if there isn't one
+	private int nextControlCharacter(int from) {
+		for(int i = from; i < dataToProcess.length(); i++) {
+			byte testChar = (byte)dataToProcess.charAt(i);
+			if(testChar == SB2000Constants.MESSAGE_START || testChar == SB2000Constants.ACK || testChar == SB2000Constants.NAK) {
+				return i;
+			}
+		}
+		return -1;
 	}
 	
 	class serialDataListener implements SerialPortDataListener {

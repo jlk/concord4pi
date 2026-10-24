@@ -6,7 +6,6 @@ import java.util.Arrays;
 import java.util.Collections;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import concord4pi.logging.LogEngine;
@@ -185,11 +184,41 @@ class SB2000ControllerTest {
 	}
 
 	@Test
-	@Disabled("Known bug: leading bytes that aren't MESSAGE_START/ACK/NAK stall framing until more data arrives, then get NAKed")
 	void leadingJunkIsSkippedWithoutStallingOrNaking() {
 		receive("XY" + Messages.wire("21", "0001000500"));
 
 		assertTrue(controller.messageWaiting());
 		assertEquals(Collections.singletonList("ACK"), serial.written());
+	}
+
+	@Test
+	void junkBetweenFramesIsSkipped() {
+		receive(Messages.wire("21", "0001000500") + "XY" + Messages.wire("21", "0001000600"));
+
+		assertEquals("0001000500", controller.getNextMessage().getDataString());
+		assertEquals("0001000600", controller.getNextMessage().getDataString());
+		assertEquals(Arrays.asList("ACK", "ACK"), serial.written());
+	}
+
+	@Test
+	void junkOnItsOwnIsDroppedRatherThanNakedLater() {
+		receive("XYZ");
+		assertTrue(serial.written().isEmpty());
+
+		receive(Messages.wire("21", "0001000500"));
+
+		assertTrue(controller.messageWaiting());
+		assertEquals(Collections.singletonList("ACK"), serial.written());
+	}
+
+	@Test
+	void junkBeforeANakStillRetransmits() {
+		IOMessage outgoing = Messages.build("2201", "000100F001");
+		controller.sendMessage(outgoing);
+		loop();
+
+		receive("XY" + NAK);
+
+		assertEquals(Arrays.asList(outgoing.toString(), outgoing.toString()), serial.written());
 	}
 }

@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.Calendar;
 
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import concord4pi.SB2000.IOMessage;
