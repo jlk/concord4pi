@@ -66,6 +66,7 @@ The work is split across three threads that communicate only through concurrent 
 - `SerialController`'s public constructor opens the real port and calls `System.exit(0)` on failure. `MQTTService`'s public constructor exits only if it can't create the Paho client (e.g. a malformed URI); a broker that's down is retried, not fatal.
 - Seams added for tests. Keep them, and keep them free of behavior changes:
   - `SerialController(LogEngine)` (protected): doesn't open a port.
+  - `SerialController(LogEngine, String deviceName)` (package-private) and `openSerialPort()` (package-private): `openSerialPort()` returns false, with the reason logged at ERROR, for any port that won't open, including names jSerialComm rejects outright. `setupSerialPort()` calls it and exits on false.
   - `SB2000Controller(SerialController, LogEngine)` (package-private): the public constructor delegates to it.
   - `SB2000Controller.appendReceivedData(byte[])` (package-private): the serial listener calls it.
   - `processIncomingMessages()` and `processOutgoingMessages()` (package-private).
@@ -78,9 +79,7 @@ The work is split across three threads that communicate only through concurrent 
 ## Known defects (verified 2026-10-23; remove entries as they're fixed)
 
 Don't write tests or code that rely on these behaviors as if they were correct.
-- **`AlarmTemperature.myAddress()`** uses `parent.getID()` instead of `parent.myAddress()`, which produces the topic `0001/temperature` (no leading `/` and no `partitionarea`).
-- **`AlarmArmingLevel.isArmed()`** is inverted: it returns true for level ≤ 1 (Zone Test or Off). It has no callers yet.
-- **`AlarmAreaPartition.isArea()` / `isPartition()`** parse the hex ID halves with radix 10, so an ID containing A–F (for example `000A`) throws a `NumberFormatException`. `isArea()` runs every time arming-level text is built.
+- **`AlarmTemperature.myAddress()`** uses `parent.getID()` instead of `parent.myAddress()`, which produces the topic `0001/temperature` (no leading `/` and no `partitionarea`), published as `<base>0001/temperature`. **Kept as is by decision (2026-10-24):** something downstream may read the current topic. Don't change it without asking.
 - **Unhandled command codes.** The panel sends these, but `MessageProcessor` has no `case` for them, so each one logs `Received Message ... without handler` at WARN and is otherwise ignored. They're mostly answers to the startup equipment-list request. In a real capture (2026-10-23), the frames were `05` ×6, `06` ×9, `07` ×6, `08` ×1, `09` ×3, `0A` ×16, `0C` ×6 and `2301` ×12. Per the SB2000 automation protocol (names from memory, so check against the protocol document before implementing), they are:
   - `05` SuperBus device data (constant `COMMANDCODE_SELSUPERBUSDEVICE` exists)
   - `06` SuperBus device capabilities
@@ -93,13 +92,8 @@ Don't write tests or code that rely on these behaviors as if they were correct.
 
   `RealFramesTest.UNHANDLED` holds one real example of each code except `09`.
 - **`09` user data appears to contain user codes (PINs) in plain BCD**, including the system master and installer codes. Never commit `09` frames, and never publish those bytes to MQTT if a handler is ever added. Treat debug logs as sensitive, because `SB2000Controller` logs every raw frame at DEBUG. Above DEBUG, log a frame with `IOMessage.getSummary()` (command code and data length, no bytes), never `toString()`, unless the handler only ever sees a command that can't carry codes. Outgoing `40` keypress commands sent over MQTT can carry a PIN too. Until 2026-10-24 the "without handler" WARN logged every `09` frame in full at the production level, so older logs from a deployment may hold the panel's codes.
-- **Text tokens:** word tokens (such as `6E` FRONT and `57` DOOR) are concatenated with no space, which gives `FRONTDOOR`. The panel separates letter tokens with an explicit space token (`2B`), but not word tokens. Tokens `FB` and `FE` have no mapping and decode to `""`. In touchpad text, `FB` appears to separate the two display lines, so `*FRI OCT 23` and `03:40 PM P1` run together as `...2303:40...`.
-- **`MessageProcessor.partitionData`** (command `04`) decodes the partition's text tokens and then discards them. The text is never stored or published, which looks unfinished.
-- **`MessageProcessor.timeAndDate`** passes the panel's 1-based month to `Calendar` (which is 0-based) and the 2-digit year as is.
-- **`SB2000Controller` framing:** if leading bytes aren't `MESSAGE_START`, ACK, or NAK, the whole buffer is requeued, and processing waits until more serial data arrives. The leading garbage is then framed as a message and NAKed. Every pending `IOMessage` is written immediately, without waiting for each ACK. ACKs and NAKs are matched to `txVerifyQueue` by order alone.
-- **`SerialController.setupSerialPort()`**: a malformed `SerialDevice` value (such as the placeholder in the committed config) makes `SerialPort.getCommPort` throw an uncaught `SerialPortInvalidPortException`, so the friendly "could not be opened" message is never shown.
-- **Shutdown runs twice:** on SIGTERM, the `appTerminator` shutdown hook calls `MainController.shutdown()` and sets `isRunning = false`. The main loop then exits, and `concord4pi.go()` calls `shutdown()` again, possibly at the same time as the hook. Whether you see the second one is a race — it depends on whether the main thread gets there before the JVM finishes exiting. Measured with `docker stop` (2026-10-24): the HEAD image logged "Serial Port ... CLOSED!" twice in 1 of 3 runs, this branch twice in 3 of 3 (its shutdown window is ~0.5s longer because the MQTT run thread blocks up to 500ms on its queue poll). Harmless either way, because the second close succeeds.
-- **`MainController.addBroadcasters()`** calls `.equals` on `MQTTBroadcaster` and `MQTTEnableCommands` without a null check. A missing key causes an NPE.
+- **Text tokens:** word tokens (such as `6E` FRONT and `57` DOOR) are concatenated with no space, which gives `FRONTDOOR`. The panel separates letter tokens with an explicit space token (`2B`), but not word tokens. **Kept as is by decision (2026-10-24),** because adding spaces would change the published `/text` values; `RealFramesTest`'s disabled test still asserts the spaced form. `FB` separates the two lines of touchpad text and decodes to a space (chosen over a newline so the text stays on one line), and `AlarmTouchpad` strips the trailing whitespace the closing `FB` leaves. `FE`, which leads touchpad text, decodes to `""`. The table's `f9`, `fa`, `fd` and `fe` cases are lowercase, so they never match `IOMessage`'s uppercase hex. What they would produce (`\n`, `<spc>`, `<bs>`, `<blink>`) hasn't been confirmed on a real panel, so they're left unmatched.
+- **`SB2000Controller` ACK/NAK handling:** every pending `IOMessage` is written immediately, without waiting for each ACK, and ACKs and NAKs are matched to `txVerifyQueue` by order alone. (Leading bytes that aren't `MESSAGE_START`, ACK or NAK are now skipped to the next control byte. A differential run of 3,000 random streams against the old framer showed junk-free streams unchanged.)
 
 ## Performance notes (current branch is `perf-improvements`)
 
@@ -113,5 +107,5 @@ All four groups of findings in `specs/performance-improvements.md` are fixed on 
 
 ## Configuration
 
-- `config/concord4pi.config` is a Java properties file read by `Config`. The README lists the keys. `Config.getProperty` can return `null`, and `MainController.addBroadcasters()` calls `.equals` directly on the `MQTT*` values, so a missing key can cause an NPE.
+- `config/concord4pi.config` is a Java properties file read by `Config`. The README lists the keys. `Config.getProperty` can return `null`. Use `getPropertyBoolean` for flags: it's true only for exactly `true`, and a missing key is `false`. `MainController.addBroadcasters()` reads `MQTTBroadcaster` and `MQTTEnableCommands` that way.
 - `config/log.config` configures tinylog. `writer.level` is one of error/warn/info/debug/trace, and the system property `-Dtinylog.configuration` points to this file. There's no global `level` key, so `writer.level` is what `LogEngine.isEnabled` reports. Log calls go through `LogEngine.log(msg, Level)` or `log(() -> msg, Level)`.
