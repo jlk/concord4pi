@@ -1,0 +1,33 @@
+#!/bin/bash
+
+#Checks MQTTService's connect retry, reconnect and outage handling against a real Mosquitto
+#broker in Docker, which the unit tests' FakeMqttClient can only model: that a clean-session
+#broker drops subscriptions on reconnect, and that Paho calls connectComplete when it reconnects.
+#Run from the repo root after "ant". Needs Docker, and uses host port 18830.
+
+set -e
+
+CONTAINER=concord4pi-harness-broker
+JAVA="${JAVA_HOME:+$JAVA_HOME/bin/}java"
+JAVAC="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
+CLASSPATH="build:$(ls lib/*.jar | tr '\n' ':')"
+OUT=$(mktemp -d)
+
+cleanup() {
+	docker rm -f ${CONTAINER} >/dev/null 2>&1 || true
+	rm -rf "${OUT}"
+}
+trap cleanup EXIT
+
+#the image's own no-auth config, so there's nothing to mount
+docker rm -f ${CONTAINER} >/dev/null 2>&1 || true
+docker create --name ${CONTAINER} -p 18830:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf >/dev/null
+
+"${JAVAC}" -d "${OUT}" -cp "${CLASSPATH}" debug/BrokerHarness.java
+
+STATUS=0
+for MODE in late restart; do
+	"${JAVA}" -Dtinylog.writer=console -Dtinylog.writer.level=warn -Dtinylog.writer.format='{level}: {message}' \
+		-cp "${OUT}:${CLASSPATH}" BrokerHarness ${MODE} || STATUS=1
+done
+exit ${STATUS}
