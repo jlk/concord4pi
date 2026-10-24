@@ -66,14 +66,41 @@ class AlarmArmingLevelTest {
 		assertEquals("Away/Full", recorder.valueOf(ARMING + "/text"));
 	}
 
+	private static boolean armed(AlarmArmingLevel level, int value) {
+		level.setArmingLevel(value);
+		return level.isArmed();
+	}
+
 	@Test
-	@Disabled("Known bug: isArmed() returns true for levels <= 1 (Zone Test/Off) and false for armed levels. It has no callers.")
 	void isArmedIsFalseWhenOffAndTrueWhenAway() {
 		armingLevel.setArmingLevel(1);
 		assertFalse(armingLevel.isArmed());
 
 		armingLevel.setArmingLevel(3);
 		assertTrue(armingLevel.isArmed());
+	}
+
+	@Test
+	void areaIsArmedAtHomeAwayNightAndSilent() {
+		assertFalse(armed(armingLevel, 0), "Zone Test");
+		assertFalse(armed(armingLevel, 1), "Off");
+		assertTrue(armed(armingLevel, 2), "Home/Perimeter");
+		assertTrue(armed(armingLevel, 3), "Away/Full");
+		assertTrue(armed(armingLevel, 4), "Night");
+		assertTrue(armed(armingLevel, 5), "Silent");
+		assertFalse(armed(armingLevel, 6), "unknown level");
+	}
+
+	@Test
+	void partitionIsArmedAtStayAndAwayButNotInTestModes() {
+		AlarmArmingLevel partitionLevel = system.getAreaPartitionByID("0100").getArmingLevel();
+
+		assertFalse(armed(partitionLevel, 1), "Off");
+		assertTrue(armed(partitionLevel, 2), "Stay");
+		assertTrue(armed(partitionLevel, 3), "Away");
+		assertFalse(armed(partitionLevel, 8), "Phone Test");
+		assertFalse(armed(partitionLevel, 9), "Sensor Test");
+		assertFalse(armed(partitionLevel, 0), "unknown level");
 	}
 
 	@Test

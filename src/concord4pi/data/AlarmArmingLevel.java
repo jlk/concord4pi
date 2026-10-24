@@ -18,9 +18,7 @@ public class AlarmArmingLevel implements IAlarmObject {
 	private int delayFlags;
 	private int delayTime;
 	
-	private final int ALARMEDMASK = 1;
-	
-	private final int DELAYLENGTHMASK = 0b110000;
+	private final int DELAYLENGTHMASK= 0b110000;
 	
 	private final int DELAYFLAG_STANDARD = 0b000000;
 	private final int DELAYFLAG_EXTENDED = 0b010000;
@@ -124,8 +122,16 @@ public class AlarmArmingLevel implements IAlarmObject {
 		return String.valueOf(this.delayTime);
 	}
 	
+	//armed means one of the protecting levels below; Off and the test levels don't count
 	public boolean isArmed() {
-		return (this.armingLevel <= ALARMEDMASK);
+		if(parent.isArea()) {
+			//Home/Perimeter, Away/Full, Night, Silent
+			return (armingLevel >= 2) && (armingLevel <= 5);
+		}
+		else {
+			//Stay, Away
+			return (armingLevel == 2) || (armingLevel == 3);
+		}
 	}
 
 	@Override
