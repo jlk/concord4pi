@@ -26,7 +26,10 @@ public class MainController {
 	
 	
 	private static boolean isRunning = true;
-	
+
+	//on SIGTERM both the shutdown hook and the main thread (once its loop ends) call shutdown()
+	private boolean isShutDown = false;
+
 	//only waited out when a pass found nothing to do in either direction
 	private static final long IDLE_SLEEP_MS = 50;
 	
@@ -100,7 +103,15 @@ public class MainController {
 		}
 	}
 	
-	public void shutdown() {
+	//synchronized, not just guarded: whichever caller comes second has to wait for the first to
+	//finish, or the hook could return while the main thread is still closing the serial port,
+	//and the JVM would halt partway through
+	public synchronized void shutdown() {
+		if(isShutDown) {
+			return;
+		}
+		isShutDown = true;
+		
 		shutdownBroadcasters();
 		alarmSystem.shutdown();
 		
