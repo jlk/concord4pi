@@ -2,18 +2,19 @@ package concord4pi.messaging;
 
 import java.util.ArrayList;
 import java.util.Queue;
-import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
+import org.eclipse.paho.client.mqttv3.IMqttClient;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
-import org.eclipse.paho.client.mqttv3.MqttCallback;
+import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.MqttPersistenceException;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.tinylog.Level;
 
@@ -22,9 +23,14 @@ import concord4pi.logging.LogEngine;
 
 public class MQTTService implements Runnable, IBroadcaster {
 
-	private BlockingQueue<NotificationPacket> notificationQueue = new LinkedBlockingQueue<NotificationPacket>();
+	//cap on notifications held while the broker is unreachable.  The panel's startup report is a
+	//few hundred, so this holds it with room to spare; past it, the oldest are dropped first
+	private static final int MAX_QUEUED_NOTIFICATIONS = 10000;
+
+	private BlockingDeque<NotificationPacket> notificationQueue = new LinkedBlockingDeque<NotificationPacket>(MAX_QUEUED_NOTIFICATIONS);
+	private AtomicLong droppedNotifications = new AtomicLong();
 	private Queue<IOMessage> returnMessages = new ConcurrentLinkedQueue<IOMessage>();
-	private MqttClient clientConnection;
+	private IMqttClient clientConnection;
 	private LogEngine logger;
 	
 	private String username;
@@ -33,8 +39,22 @@ public class MQTTService implements Runnable, IBroadcaster {
 	private String listenTopic;
 	private boolean enableCommands = false;
 	
-	private boolean isRunning = false;
-	
+	private volatile boolean isRunning = false;
+
+	//true once a connect has succeeded.  Paho's automatic reconnect only starts after that, so
+	//until then the run thread retries the connect itself
+	private volatile boolean hasConnected = false;
+	private long connectRetryMs = CONNECT_RETRY_INITIAL_MS;
+	private static final long CONNECT_RETRY_INITIAL_MS = 1000;
+	private static final long CONNECT_RETRY_MAX_MS = 60000;
+
+	//the broker drops subscriptions with the connection (clean session) and Paho doesn't restore
+	//them, so the callback sets this after an automatic reconnect and the run thread resubscribes
+	private volatile boolean resubscribeNeeded = false;
+
+	//wakes the run thread early from a connect retry wait or an outage wait
+	private final Object wakeSignal = new Object();
+
 	private final boolean retainMessages = false;
 	
 	//bounded wait on shutdown: the run thread is the one that disconnects, and it may be
@@ -46,32 +66,47 @@ public class MQTTService implements Runnable, IBroadcaster {
 	private static final long QUEUE_WAIT_MS = 500;
 	
 	public MQTTService(LogEngine logger, String connectionString, String clientID, String username, String password, String topicBase, String listenTopic, boolean enableCommands) {
+		this(logger, createClient(logger, connectionString, clientID), username, password, topicBase, listenTopic, enableCommands);
+	}
+	
+	//test seam: takes the client instead of building one, so tests can pass a fake
+	MQTTService(LogEngine logger, IMqttClient clientConnection, String username, String password, String topicBase, String listenTopic, boolean enableCommands) {
 		this.logger = logger;
+		this.clientConnection = clientConnection;
 		this.username = username;
 		this.password = password;
 		this.topicBase = topicBase;
 		this.listenTopic = listenTopic;
 		this.enableCommands = enableCommands;
-		
+	
+		isRunning = true;
+		hasConnected = connect();
+		if(hasConnected) {
+			startListening();
+		}
+	}
+	
+	private static IMqttClient createClient(LogEngine logger, String connectionString, String clientID) {
 		try {
-			clientConnection = new MqttClient(
-					connectionString, 
+			IMqttClient client = new MqttClient(
+					connectionString,
 					clientID,
 					//in-memory: with clean session true Paho clears the store on every connect,
 					//so a file store only cost a write and a delete per QoS 1 publish
 					new MemoryPersistence()
-			);	
+			);
 			logger.log("Created MQTT Service connection", Level.DEBUG);
-			isRunning = connect();
-			startListening();
+			return client;
 		} catch (MqttException e) {
 			logger.log("Exception while connecting to MQTT Service!  Exiting...", Level.ERROR);
 			System.exit(0);
+			return null;
 		}
 	}
 	
 	public void shutdown() {
 		isRunning = false;
+		wake();
 		if(!waitForDisconnect()) {
 			logger.log("MQTT Service still connected " + SHUTDOWN_TIMEOUT_MS + "ms after shutdown was requested... continuing anyway", Level.WARN);
 		}
@@ -98,19 +133,40 @@ public class MQTTService implements Runnable, IBroadcaster {
 
 	@Override
 	public void sendNotification(NotificationPacket packet) {
+		if(!isRunning) {
+			//nothing will drain the queue any more
+			return;
+		}
 		logger.log(() -> "Added Notification Packet to MQTT Queue [" + packet + "]", Level.DEBUG);
-		notificationQueue.offer(packet);		
+		//full only when the broker has been unreachable for a while.  Drop the oldest: a newer
+		//update to the same topic supersedes it, and the newest state is what matters on reconnect
+		while(!notificationQueue.offerLast(packet)) {
+			if(notificationQueue.pollFirst() != null) {
+				long dropped = droppedNotifications.incrementAndGet();
+				if(dropped == 1 || dropped % 1000 == 0) {
+					logger.log("MQTT notification queue is full (" + MAX_QUEUED_NOTIFICATIONS + ")... dropped the oldest " + dropped + " so far", Level.WARN);
+				}
+			}
+		}
 	}
 
 	@Override
 	public void run() {
 		while(isRunning) {
 			try {
-				//block until there's something to send, instead of waking 20 times a second to find an empty queue
-				NotificationPacket packet = notificationQueue.poll(QUEUE_WAIT_MS, TimeUnit.MILLISECONDS);
-				if(packet != null) {
-					logger.log(() -> "Sending Notification packet via MQTT Service [" + packet + "]", Level.DEBUG);
-					sendMessage(packet);
+				if(!hasConnected) {
+					retryConnect();
+				}
+				else if(!clientConnection.isConnected()) {
+					//Paho is reconnecting: hold the queue rather than publish into a dead connection
+					pause(QUEUE_WAIT_MS);
+				}
+				else {
+					if(resubscribeNeeded) {
+						resubscribeNeeded = false;
+						startListening();
+					}
+					publishNext();
 				}
 			} catch (InterruptedException interrupted) {
 				//An interrupt means stop, not spin.  Re-arming the flag and continuing would make
@@ -123,11 +179,57 @@ public class MQTTService implements Runnable, IBroadcaster {
 			}
 		}
 		
-		stopListening();		
-		isRunning = disconnect();
+		if(hasConnected) {
+			if(clientConnection.isConnected()) {
+				stopListening();
+			}
+			disconnect();
+		}
+	}
+	
+	private void publishNext() throws InterruptedException {
+		//block until there's something to send, instead of waking 20 times a second to find an empty queue
+		NotificationPacket packet = notificationQueue.poll(QUEUE_WAIT_MS, TimeUnit.MILLISECONDS);
+		if(packet != null) {
+			logger.log(() -> "Sending Notification packet via MQTT Service [" + packet + "]", Level.DEBUG);
+			if(!sendMessage(packet) && !clientConnection.isConnected()) {
+				//the connection dropped under this publish: put it back to go out after the reconnect
+				notificationQueue.offerFirst(packet);
+			}
+		}
+	}
+	
+	private void retryConnect() throws InterruptedException {
+		pause(connectRetryMs);
+		if(!isRunning) {
+			return;
+		}
+		//back off before trying, so a failure's log line names the wait that will follow it
+		connectRetryMs = Math.min(connectRetryMs * 2, CONNECT_RETRY_MAX_MS);
+		if(connect()) {
+			hasConnected = true;
+			connectRetryMs = CONNECT_RETRY_INITIAL_MS;
+			startListening();
+		}
+	}
+	
+	//waits up to ms, returning early on shutdown or a reconnect
+	private void pause(long ms) throws InterruptedException {
+		synchronized(wakeSignal) {
+			if(isRunning) {
+				wakeSignal.wait(ms);
+			}
+		}
+	}
+	
+	private void wake() {
+		synchronized(wakeSignal) {
+			wakeSignal.notifyAll();
+		}
 	}
 	
 	private boolean connect() {
+		logger.log("Connecting to MQTT Broker [" + clientConnection.getServerURI() + "]...", Level.INFO);
 		try {
 			
 			MqttConnectOptions connectionOptions = new MqttConnectOptions();
@@ -146,7 +248,7 @@ public class MQTTService implements Runnable, IBroadcaster {
 			logger.log("Connection successful to MQTT Service!", Level.INFO);
 			
 		} catch (MqttException e) {
-			logger.log("Could not connect to MQTT Broker... Disabling service!", Level.WARN);
+			logger.log("Could not connect to MQTT Broker (" + e.getMessage() + ")... retrying in " + (connectRetryMs / 1000) + "s", Level.WARN);
 			return false;
 		}
 		return true;
@@ -168,7 +270,7 @@ public class MQTTService implements Runnable, IBroadcaster {
 			clientConnection.subscribe(topicBase + "/" + listenTopic);
 			logger.log(() -> "Listening for input on MQTT topic [" + topicBase + "/" + listenTopic + "]", Level.TRACE);
 		} catch (MqttException e) {
-			logger.log(() -> "Exception while trying to listen for input on MQTT topic [" + topicBase + "]", Level.TRACE);
+			logger.log("Could not listen for input on MQTT topic [" + topicBase + "/" + listenTopic + "]: " + e.getMessage(), Level.WARN);
 			return false;
 		}
 		return true;
@@ -179,13 +281,14 @@ public class MQTTService implements Runnable, IBroadcaster {
 			clientConnection.unsubscribe(topicBase + "/" + listenTopic);
 			logger.log(() -> "No longer listening for input on MQTT topic [" + topicBase + "/" + listenTopic + "]", Level.TRACE);
 		} catch (MqttException e) {
-			logger.log(() -> "Exception while trying to stop listening for input on MQTT topic [" + topicBase + "]", Level.TRACE);
+			logger.log("Could not stop listening for input on MQTT topic [" + topicBase + "/" + listenTopic + "]: " + e.getMessage(), Level.WARN);
 			return false;
 		}
 		return true;
 	}
 	
-	public void sendMessage(NotificationPacket packet) {
+	//true when the packet needs nothing more: published, or skipped on purpose
+	public boolean sendMessage(NotificationPacket packet) {
 		String messageTopic = packet.key;
 		String message = packet.value;
 		
@@ -203,12 +306,18 @@ public class MQTTService implements Runnable, IBroadcaster {
 			try {
 				clientConnection.publish(topicBase + messageTopic, newMessage);
 				logger.log(() -> "Sent MQTT Message [" + message + "] in topic [" + messageTopic + "]", Level.TRACE);
-			} catch (MqttPersistenceException e) {
-				logger.log(() -> "MQTT Persistence Exception when trying to send MQTT Message [" + message + "] in topic [" + messageTopic + "]", Level.TRACE);
 			} catch (MqttException e) {
-				logger.log(() -> "General MQTT Exception when trying to send MQTT Message [" + message + "] in topic [" + messageTopic + "]", Level.TRACE);
+				//the topic but not the value: command receipts echo the raw command back
+				logger.log("Could not publish to MQTT topic [" + topicBase + messageTopic + "]: " + e.getMessage(), Level.WARN);
+				return false;
 			}
 		}
+		return true;
+	}
+	
+	//for tests: how many notifications are waiting to be published
+	int queuedNotificationCount() {
+		return notificationQueue.size();
 	}
 	
 	@Override
@@ -227,7 +336,7 @@ public class MQTTService implements Runnable, IBroadcaster {
 		return responses;
 	}
 	
-	private class MQTTMessageHandler implements MqttCallback {
+	private class MQTTMessageHandler implements MqttCallbackExtended {
 		
 		private LogEngine logger;
 		
@@ -239,10 +348,16 @@ public class MQTTService implements Runnable, IBroadcaster {
 		@Override
 		public void connectionLost(Throwable connectionLost) {
 			logger.log("MQTTService Connection Lost! Attempting to Reconnect!", Level.WARN);
-			//stopListening();
-			//disconnect();
-			//connect();
-			//startListening();
+		}
+		
+		//runs on a Paho thread, so leave the subscribe (which blocks on the broker) to the run thread
+		@Override
+		public void connectComplete(boolean reconnect, String serverURI) {
+			if(reconnect) {
+				logger.log("Reconnected to MQTT Broker [" + serverURI + "]", Level.INFO);
+				resubscribeNeeded = true;
+				wake();
+			}
 		}
 
 		@Override
