@@ -24,6 +24,11 @@ class AlarmArmingLevelTest {
 		armingLevel = system.getAreaPartitionByID("0001").getArmingLevel();
 	}
 
+	private String delayText(int delayFlags) {
+		armingLevel.setDelayFlags(delayFlags);
+		return armingLevel.getDelayFlagsText();
+	}
+
 	private static String text(AlarmArmingLevel level, int value) {
 		level.setArmingLevel(value);
 		return level.getArmingLevelText();
@@ -106,7 +111,6 @@ class AlarmArmingLevelTest {
 	}
 
 	@Test
-	@Disabled("Known bug: delay flag masks are one bit low; the panel sends exit delay as bit 6 (0x40)")
 	void delayFlagsExitBit() {
 		armingLevel.setDelayFlags(0x40);
 
@@ -114,7 +118,6 @@ class AlarmArmingLevelTest {
 	}
 
 	@Test
-	@Disabled("Known bug: getDelayFlagsText() masks with 0 and uses bits 3-4, so it always reports STANDARD")
 	void delayFlagsExtendedAndTwiceExtended() {
 		armingLevel.setDelayFlags(0x10);
 		assertTrue(armingLevel.getDelayFlagsText().startsWith("EXTENDED"));
@@ -124,7 +127,6 @@ class AlarmArmingLevelTest {
 	}
 
 	@Test
-	@Disabled("Known bug: delay flag masks are one bit low; the panel sends end of delay as bit 7 (0x80)")
 	void delayFlagsEndBit() {
 		armingLevel.setDelayFlags(0x80);
 
@@ -132,11 +134,32 @@ class AlarmArmingLevelTest {
 	}
 
 	@Test
-	@Disabled("Known bug: setDelayFlags() publishes the number and the text to the same /delayFlags topic")
 	void delayFlagsNumberAndTextUseSeparateTopics() {
 		armingLevel.setDelayFlags(0x40);
 
 		assertEquals("64", recorder.valueOf(ARMING + "/delayFlags"));
 		assertEquals(armingLevel.getDelayFlagsText(), recorder.valueOf(ARMING + "/delayFlags/text"));
+	}
+
+	@Test
+	void delayFlagsTextForEachCombination() {
+		assertEquals("STANDARD|ENTRY DELAY|START DELAY", delayText(0x00));
+		assertEquals("EXTENDED|ENTRY DELAY|START DELAY", delayText(0x10));
+		assertEquals("TWICE EXTENDED|ENTRY DELAY|START DELAY", delayText(0x20));
+		assertEquals("STANDARD|EXIT DELAY|START DELAY", delayText(0x40));
+		assertEquals("STANDARD|ENTRY DELAY|END DELAY", delayText(0x80));
+		assertEquals("STANDARD|EXIT DELAY|END DELAY", delayText(0xC0));
+		assertEquals("TWICE EXTENDED|EXIT DELAY|END DELAY", delayText(0xE0));
+	}
+
+	@Test
+	void delayFlagsWithBothLengthBitsAreUnknown() {
+		//0x30 isn't a delay length the protocol defines
+		assertEquals("UNKNOWN|ENTRY DELAY|START DELAY", delayText(0x30));
+	}
+
+	@Test
+	void delayFlagsTextIgnoresTheLowBits() {
+		assertEquals(delayText(0x40), delayText(0x4F));
 	}
 }

@@ -163,7 +163,7 @@ public class MessageProcessor {
 	private void partitionData(IOMessage theMessage) {
 		String data = theMessage.getDataString();
 		String partitionArea = data.substring(0, 4);
-		int armingLevel = Integer.parseInt(data.substring(4, 6));
+		int armingLevel = Integer.parseInt(data.substring(4, 6), 16);
 		String textTokens[] = data.substring(6, data.length()).split("(?<=\\G.{2})");
 		StringBuilder text = new StringBuilder();
 
@@ -191,7 +191,7 @@ public class MessageProcessor {
 		String data = theMessage.getDataString();
 		String partitionArea = data.substring(0, 4);
 		String userID = data.substring(4, 8);
-		int armingLevel = Integer.parseInt(data.substring(8, 10));
+		int armingLevel = Integer.parseInt(data.substring(8, 10), 16);
 		
 		AlarmAreaPartition theAP = alarmData.getAreaPartitionByID(partitionArea);
 		AlarmArmingLevel newArmingLevel = theAP.getArmingLevel();
@@ -287,7 +287,7 @@ public class MessageProcessor {
 	private void featureState(IOMessage theMessage) {
 		String data = theMessage.getDataString();
 		String partitionArea = data.substring(0, 4);
-		int featureState = Integer.parseInt(data.substring(4, 6));
+		int featureState = Integer.parseInt(data.substring(4, 6), 16);
 
 		AlarmAreaPartition theAP = alarmData.getAreaPartitionByID(partitionArea);
 		

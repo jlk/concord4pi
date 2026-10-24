@@ -73,11 +73,22 @@ class AlarmSirenTest {
 	}
 
 	@Test
-	@Disabled("Known bug: siren sync history appends then trims the newest entry, and getters read the oldest")
 	void mostRecentSyncEventIsTheNewest() {
 		siren.addSyncEvent();
 		Date second = siren.addSyncEvent();
 
 		assertSame(second, siren.getMostRecentSirenSyncEvent());
+	}
+
+	@Test
+	void syncHistoryKeepsTheNewestFive() {
+		Date[] events = new Date[7];
+		for(int i = 0; i < events.length; i++) {
+			events[i] = siren.addSyncEvent();
+		}
+
+		assertSame(events[6], siren.getPastSirenSyncEvent(0));
+		assertSame(events[2], siren.getPastSirenSyncEvent(4));
+		assertNull(siren.getPastSirenSyncEvent(5));
 	}
 }

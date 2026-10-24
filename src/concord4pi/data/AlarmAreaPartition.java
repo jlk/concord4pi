@@ -66,12 +66,12 @@ public class AlarmAreaPartition implements IAlarmObject {
 	}
 	
 	public void setText(String newStatusText) {
-		this.statusText.add(newStatusText);
+		this.statusText.add(0, newStatusText);
 		
 		updateTrigger(new NotificationPacket(myAddress() + "/text", newStatusText, NotificationPacket.NPACTION_UPDATE));
 		
 		while(statusText.size() > maxMessageHistory) {
-			statusText.remove(statusText.get(statusText.size()-1));
+			statusText.remove(statusText.size()-1);
 		}
 		logger.log("Added new StatusText [" + newStatusText + "] for PartitionArea [" + getID() + "]", Level.TRACE);
 	}
@@ -120,12 +120,12 @@ public class AlarmAreaPartition implements IAlarmObject {
 	
 	public AlarmTrouble addAlarmTroubleEvent(int generalType, int specificType, int sourceType, String sourceNumber, String eventData) {
 		AlarmTrouble newEvent = new AlarmTrouble(this, logger, generalType, specificType, sourceType, sourceNumber, eventData); 
-		alarmTroubleEvents.add(newEvent);
+		alarmTroubleEvents.add(0, newEvent);
 		
 		//when the linked list hits its max,remove the oldest.
 		//this provides some history but limits the length of the list
 		while(alarmTroubleEvents.size() > maxMessageHistory) {
-			alarmTroubleEvents.remove(alarmTroubleEvents.get(alarmTroubleEvents.size()-1));
+			alarmTroubleEvents.remove(alarmTroubleEvents.size()-1);
 		}
 		
 		logger.log("Added new Alarm Trouble Event [" + newEvent.getTypeString() + "] with Data [" + newEvent.getEventData() + "]", Level.TRACE);
@@ -295,19 +295,19 @@ public class AlarmAreaPartition implements IAlarmObject {
 		if((featureSet & featureChime) == featureChime) {
 			functionSetText.add("CHIME");
 		}
-		else if((featureSet & featureEnergySaver) == featureEnergySaver) {
+		if((featureSet & featureEnergySaver) == featureEnergySaver) {
 			functionSetText.add("ENERGY SAVER");
 		}
-		else if((featureSet & featureNoDelay) == featureNoDelay) {
+		if((featureSet & featureNoDelay) == featureNoDelay) {
 			functionSetText.add("NO DELAY");
 		}
-		else if((featureSet & featureLatchKey) == featureLatchKey) {
+		if((featureSet & featureLatchKey) == featureLatchKey) {
 			functionSetText.add("LATCHKEY");
 		}
-		else if((featureSet & featureSilentArming) == featureSilentArming) {
+		if((featureSet & featureSilentArming) == featureSilentArming) {
 			functionSetText.add("SILENT ARMING");
 		}
-		else if((featureSet & featureQuickArm) == featureQuickArm) {
+		if((featureSet & featureQuickArm) == featureQuickArm) {
 			functionSetText.add("QUICK ARM");
 		}
 		

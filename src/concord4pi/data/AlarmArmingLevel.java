@@ -20,16 +20,14 @@ public class AlarmArmingLevel implements IAlarmObject {
 	
 	private final int ALARMEDMASK = 1;
 	
-	private final int BIT45MASK = 0b11000;
-	private final int BIT6MASK = 0b100000;
-	private final int BIT7MASK = 0b1000000;
+	private final int DELAYLENGTHMASK = 0b110000;
 	
-	private final int DELAYFLAG_STANDARD = 0b00000;
-	private final int DELAYFLAG_EXTENDED = 0b01000;
-	private final int DELAYFLAG_TWICEEXTENDED = 0b10000;
+	private final int DELAYFLAG_STANDARD = 0b000000;
+	private final int DELAYFLAG_EXTENDED = 0b010000;
+	private final int DELAYFLAG_TWICEEXTENDED = 0b100000;
 	
-	private final int DELAYFLAG_EXIT = 0b100000;
-	private final int DELAYFLAG_END = 0b100000;
+	private final int DELAYFLAG_EXIT = 0b1000000;
+	private final int DELAYFLAG_END = 0b10000000;
 
 	
 	public AlarmArmingLevel(AlarmAreaPartition parent, LogEngine logger) {
@@ -71,7 +69,7 @@ public class AlarmArmingLevel implements IAlarmObject {
 	public void setDelayFlags(int delayFlags) {
 		this.delayFlags = delayFlags;
 		updateTrigger(new NotificationPacket(myAddress() + "/delayFlags", "" + delayFlags, NotificationPacket.NPACTION_UPDATE));
-		updateTrigger(new NotificationPacket(myAddress() + "/delayFlags", getDelayFlagsText(), NotificationPacket.NPACTION_UPDATE));
+		updateTrigger(new NotificationPacket(myAddress() + "/delayFlags/text", getDelayFlagsText(), NotificationPacket.NPACTION_UPDATE));
 		logger.log("Set ArmingLevel Delay Flags to [" + delayFlags + "]", Level.TRACE);
 	}
 	
@@ -81,29 +79,29 @@ public class AlarmArmingLevel implements IAlarmObject {
 	
 	public String getDelayFlagsText() {
 		List<String> delayFlags = new LinkedList<String>();
-		int bit54 = this.delayFlags & BIT45MASK;
-		int bit6 = this.delayFlags & BIT6MASK;
-		int bit7 = this.delayFlags & BIT7MASK;
+		int delayLength = this.delayFlags & DELAYLENGTHMASK;
 		
-		
-		if((bit54 & DELAYFLAG_STANDARD) == DELAYFLAG_STANDARD) {
+		if(delayLength == DELAYFLAG_STANDARD) {
 			delayFlags.add("STANDARD");
 		}
-		else if((bit54 & DELAYFLAG_EXTENDED) == DELAYFLAG_EXTENDED) {
+		else if(delayLength == DELAYFLAG_EXTENDED) {
 			delayFlags.add("EXTENDED");
 		}
-		else if((bit54 & DELAYFLAG_TWICEEXTENDED) == DELAYFLAG_TWICEEXTENDED) {
+		else if(delayLength == DELAYFLAG_TWICEEXTENDED) {
 			delayFlags.add("TWICE EXTENDED");
 		}
+		else {
+			delayFlags.add("UNKNOWN");
+		}
 		
-		if((bit6 & DELAYFLAG_EXIT) == DELAYFLAG_EXIT) {
+		if((this.delayFlags & DELAYFLAG_EXIT) == DELAYFLAG_EXIT) {
 			delayFlags.add("EXIT DELAY");
 		}
 		else {
 			delayFlags.add("ENTRY DELAY");
 		}
 		
-		if((bit7 & DELAYFLAG_END) == DELAYFLAG_END) {
+		if((this.delayFlags & DELAYFLAG_END) == DELAYFLAG_END) {
 			delayFlags.add("END DELAY");
 		}
 		else {

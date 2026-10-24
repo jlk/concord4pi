@@ -96,11 +96,9 @@ class AlarmZoneTest {
 				"LONG LIGHTS", "NONE", "NONE", "ARM & STAR", "DISARM & LIGHTS", "NONE" };
 
 		for(int command = 0; command < expected.length; command++) {
-			//a fresh zone per command, so the (buggy) history ordering doesn't matter
-			AlarmZone fresh = partition.getZoneByID(String.format("01%02X", command));
-			fresh.setKeyFobCommand(command);
-			assertEquals(expected[command], fresh.getKeyFobCommandText(), "command " + command);
-			assertEquals(command, fresh.getKeyFobCommand());
+			zone.setKeyFobCommand(command);
+			assertEquals(expected[command], zone.getKeyFobCommandText(), "command " + command);
+			assertEquals(command, zone.getKeyFobCommand());
 		}
 	}
 
@@ -113,7 +111,6 @@ class AlarmZoneTest {
 	}
 
 	@Test
-	@Disabled("Known bug: zone history appends then trims the newest entry, and getters read the oldest")
 	void getTextReturnsTheMostRecentText() {
 		zone.setText("FIRST");
 		zone.setText("SECOND");
@@ -122,7 +119,6 @@ class AlarmZoneTest {
 	}
 
 	@Test
-	@Disabled("Known bug: zone history appends then trims the newest entry, and getters read the oldest")
 	void historyKeepsTheNewestFive() {
 		for(int i = 0; i < 7; i++) {
 			zone.setText("T" + i);
@@ -133,7 +129,6 @@ class AlarmZoneTest {
 	}
 
 	@Test
-	@Disabled("Known bug: key fob text is computed from the oldest command, not the one just received")
 	void keyFobTextMatchesTheLatestCommand() {
 		zone.setKeyFobCommand(1);
 		zone.setKeyFobCommand(0);
@@ -143,8 +138,53 @@ class AlarmZoneTest {
 	}
 
 	@Test
-	@Disabled("Known bug: AlarmZone.getPastText() throws on a zone with no text yet")
 	void getTextOnNewZoneIsEmpty() {
 		assertEquals("", zone.getText());
+	}
+
+	@Test
+	void pastTextBeyondTheHistoryIsEmpty() {
+		zone.setText("ONLY");
+
+		assertEquals("", zone.getPastText(1));
+	}
+
+	@Test
+	void updateZoneDataTwiceKeepsTheLatestText() {
+		zone.updateZoneData(3, 1, 0, "FRONT DOOR");
+		zone.updateZoneData(3, 1, 1, "BACK DOOR");
+
+		assertEquals("BACK DOOR", zone.getText());
+		assertEquals("FRONT DOOR", zone.getPastText(1));
+	}
+
+	@Test
+	void keyFobHistoryKeepsTheNewestFive() {
+		for(int command = 0; command < 7; command++) {
+			zone.setKeyFobCommand(command);
+		}
+
+		assertEquals(6, zone.getPastKeyFobCommand(0));
+		assertEquals(2, zone.getPastKeyFobCommand(4));
+		assertEquals("NONE", zone.getPastKeyFobCommandText(5));
+	}
+
+	@Test
+	void everyKeyFobCommandPublishesItsOwnText() {
+		//more commands than the history holds, so the trim runs too
+		int[] commands = { 1, 0, 2, 3, 0, 1, 6, 0 };
+		String[] names = { "ARM", "DISARM", "LIGHTS", "STAR", "DISARM", "ARM", "LONG LIGHTS", "DISARM" };
+
+		for(int i = 0; i < commands.length; i++) {
+			zone.setKeyFobCommand(commands[i]);
+			assertEquals("" + commands[i], recorder.valueOf(ZONE + "/keyFob/command"), "command " + i);
+			assertEquals(names[i], recorder.valueOf(ZONE + "/keyFob/command/text"), "command " + i);
+		}
+	}
+
+	@Test
+	void keyFobOnNewZoneIsNone() {
+		assertEquals(-1, zone.getKeyFobCommand());
+		assertEquals("NONE", zone.getKeyFobCommandText());
 	}
 }

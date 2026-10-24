@@ -193,7 +193,6 @@ class MessageProcessorTest {
 	}
 
 	@Test
-	@Disabled("Known bug: feature state is parsed with radix 10, so 0x40 (quick arm) decodes as 40")
 	void featureState220CParsesHex() {
 		process("220C", "0001" + "40");
 
@@ -259,5 +258,46 @@ class MessageProcessorTest {
 
 		assertEquals(1, query.size());
 		assertEquals("020204", query.get(0).toString());
+	}
+
+	@Test
+	void featureState220CWithAHexLetterDoesNotThrow() {
+		//0x0C is NO DELAY + LATCHKEY. Base 10 can't parse "0C", and nothing above processMessage
+		//catches the exception, so it would end MainController's loop
+		assertDoesNotThrow(() -> process("220C", "0001" + "0C"));
+
+		assertEquals("12", recorder.valueOf(PARTITION + "/featureSet"));
+		assertEquals("NO DELAY|LATCHKEY", recorder.valueOf(PARTITION + "/featureSet/text"));
+	}
+
+	@Test
+	void armingLevel2201WithAHexLetterDoesNotThrow() {
+		assertDoesNotThrow(() -> process("2201", "0001" + "00FF" + "0A"));
+
+		assertEquals("10", recorder.valueOf(PARTITION + "/armingLevel"));
+		assertEquals("UNKNOWN", recorder.valueOf(PARTITION + "/armingLevel/text"));
+	}
+
+	@Test
+	void partitionData04WithAHexLetterDoesNotThrow() {
+		assertDoesNotThrow(() -> process("04", "0001" + "0A" + "2001"));
+
+		assertEquals("10", recorder.valueOf(PARTITION + "/armingLevel"));
+	}
+
+	@Test
+	void keyFob2303PublishesTheTextOfEachCommand() {
+		process("2303", "0001" + "0005" + "01");
+		process("2303", "0001" + "0005" + "00");
+
+		assertEquals("0", recorder.valueOf(PARTITION + "/zones/0005/keyFob/command"));
+		assertEquals("DISARM", recorder.valueOf(PARTITION + "/zones/0005/keyFob/command/text"));
+	}
+
+	@Test
+	@Disabled("Known bug: a valid frame with a short payload throws StringIndexOutOfBoundsException, and nothing above processMessage catches it")
+	void shortPayloadDoesNotThrow() {
+		//length and checksum are valid, but feature state needs 3 data bytes and gets 1
+		assertDoesNotThrow(() -> process("220C", "00"));
 	}
 }

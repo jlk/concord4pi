@@ -122,12 +122,12 @@ public class AlarmZone implements IAlarmObject {
 	}
 	
 	public void setText(String newStatusText) {
-		this.statusText.add(newStatusText);
+		this.statusText.add(0, newStatusText);
 		
 		updateTrigger(new NotificationPacket(myAddress() + "/text", newStatusText, NotificationPacket.NPACTION_UPDATE));
 		
 		while(statusText.size() > maxMessageHistory) {
-			statusText.remove(statusText.get(statusText.size()-1));
+			statusText.remove(statusText.size()-1);
 		}
 		logger.log("Set Text to [" + newStatusText + "] for Zone [" + getID() + "]", Level.TRACE);
 	}
@@ -139,7 +139,12 @@ public class AlarmZone implements IAlarmObject {
 	}
 	
 	public String getPastText(int messagePastIndex) {
-		return statusText.get(messagePastIndex);
+		if(messagePastIndex < statusText.size()) {
+			return statusText.get(messagePastIndex);
+		}
+		else {
+			return "";
+		}
 	}
 	
 	public int getKeyFobCommand() {
@@ -181,17 +186,22 @@ public class AlarmZone implements IAlarmObject {
 	}
 	
 	public int getPastKeyFobCommand(int index) {
-		return keyFobCommands.get(index);
+		if(index < keyFobCommands.size()) {
+			return keyFobCommands.get(index);
+		}
+		else {
+			return UNSET;
+		}
 	}
 	
 	public void setKeyFobCommand(int newKeyFobCommand) {
-		keyFobCommands.add(newKeyFobCommand);
+		keyFobCommands.add(0, newKeyFobCommand);
 		
 		updateTrigger(new NotificationPacket(myAddress() + "/keyFob/command", "" + newKeyFobCommand, NotificationPacket.NPACTION_UPDATE));
 		updateTrigger(new NotificationPacket(myAddress() + "/keyFob/command/text", getKeyFobCommandText(), NotificationPacket.NPACTION_UPDATE));
 		
 		while(keyFobCommands.size() > maxMessageHistory) {
-			keyFobCommands.remove(keyFobCommands.get(keyFobCommands.size()-1));
+			keyFobCommands.remove(keyFobCommands.size()-1);
 		}
 		logger.log("Set new KeyFob Command to [" + newKeyFobCommand + "] for Zone [" + getID() + "]", Level.TRACE);
 	}

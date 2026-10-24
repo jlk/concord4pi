@@ -138,7 +138,6 @@ class RealFramesTest {
 	}
 
 	@Test
-	@Disabled("Known bug: delay flag masks are one bit low; the panel sends exit=0x40 and end=0x80")
 	void delayFlagsMatchWhatThePanelSends() {
 		process(ARM_AWAY);
 		process(EXIT_DELAY_60S);

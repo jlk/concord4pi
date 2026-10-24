@@ -109,12 +109,12 @@ public class AlarmSiren implements IAlarmObject {
 	
 	public Date addSyncEvent() {
 		Date newSyncEvent = new Date(); 
-		syncEvent.add(newSyncEvent);
+		syncEvent.add(0, newSyncEvent);
 		
 		updateTrigger(new NotificationPacket(myAddress() + "/sync", "" + newSyncEvent, NotificationPacket.NPACTION_UPDATE));
 		
 		while(syncEvent.size() > maxMessageHistory) {
-			syncEvent.remove(syncEvent.get(syncEvent.size()-1));
+			syncEvent.remove(syncEvent.size()-1);
 		}
 		
 		logger.log("Added new Siren Sync Event [" + newSyncEvent + "]", Level.TRACE);

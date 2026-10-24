@@ -69,7 +69,6 @@ class AlarmAreaPartitionTest {
 	}
 
 	@Test
-	@Disabled("Known bug: getFeatureSetText() uses an else-if chain, so only the first set feature is reported")
 	void featureTextListsEverySetFeature() {
 		assertEquals("CHIME|ENERGY SAVER", featureText(0b11));
 	}
@@ -89,7 +88,6 @@ class AlarmAreaPartitionTest {
 	}
 
 	@Test
-	@Disabled("Known bug: partition text history appends then trims the newest entry, and getters read the oldest")
 	void getTextReturnsTheMostRecentText() {
 		partition.setText("FIRST");
 		partition.setText("SECOND");
@@ -106,7 +104,6 @@ class AlarmAreaPartitionTest {
 	}
 
 	@Test
-	@Disabled("Known bug: trouble event history appends then trims the newest entry, and getters read the oldest")
 	void mostRecentAlarmTroubleEventIsTheNewest() {
 		partition.addAlarmTroubleEvent(1, 3, 2, "05", "0000");
 		AlarmTrouble second = partition.addAlarmTroubleEvent(3, 3, 2, "05", "0000");
@@ -136,5 +133,35 @@ class AlarmAreaPartitionTest {
 		assertEquals("70", recorder.valueOf(topic));
 		assertEquals("75", recorder.valueOf(topic + "/HSP"));
 		assertEquals("65", recorder.valueOf(topic + "/LSP"));
+	}
+
+	@Test
+	void textHistoryKeepsTheNewestFive() {
+		for(int i = 0; i < 7; i++) {
+			partition.setText("T" + i);
+		}
+
+		assertEquals("T6", partition.getPastText(0));
+		assertEquals("T2", partition.getPastText(4));
+		assertEquals("", partition.getPastText(5));
+	}
+
+	@Test
+	void troubleHistoryKeepsTheNewestFive() {
+		AlarmTrouble[] events = new AlarmTrouble[7];
+		for(int i = 0; i < events.length; i++) {
+			events[i] = partition.addAlarmTroubleEvent(1, i, 2, "05", "0000");
+		}
+
+		assertSame(events[6], partition.getPastAlarmTroubleEvent(0));
+		assertSame(events[2], partition.getPastAlarmTroubleEvent(4));
+		assertNull(partition.getPastAlarmTroubleEvent(5));
+	}
+
+	@Test
+	void featureTextNamesEachSetFeatureInBitOrder() {
+		assertEquals("", featureText(0));
+		assertEquals("NO DELAY|LATCHKEY", featureText(0x0C));
+		assertEquals("CHIME|ENERGY SAVER|NO DELAY|LATCHKEY|SILENT ARMING|QUICK ARM", featureText(0x5F));
 	}
 }
