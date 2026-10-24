@@ -40,12 +40,31 @@ class AlarmAreaPartitionTest {
 	}
 
 	@Test
-	@Disabled("Known bug: isArea()/isPartition() parse the hex ID with radix 10, so IDs containing A-F throw")
 	void hexIDsDoNotThrow() {
 		AlarmAreaPartition area = system.getAreaPartitionByID("000A");
 
 		assertDoesNotThrow(area::isArea);
 		assertDoesNotThrow(area::isPartition);
+	}
+
+	@Test
+	void hexIDsAreDecodedAsHex() {
+		AlarmAreaPartition area = system.getAreaPartitionByID("000A");
+		assertTrue(area.isArea());
+		assertFalse(area.isPartition());
+
+		AlarmAreaPartition part = system.getAreaPartitionByID("0B00");
+		assertTrue(part.isPartition());
+		assertFalse(part.isArea());
+	}
+
+	@Test
+	void armingLevelTextForAHexAreaUsesTheAreaNames() {
+		//isArea() runs whenever arming-level text is built
+		AlarmArmingLevel level = system.getAreaPartitionByID("000A").getArmingLevel();
+		level.setArmingLevel(3);
+
+		assertEquals("Away/Full", level.getArmingLevelText());
 	}
 
 	@Test

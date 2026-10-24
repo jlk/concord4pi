@@ -57,12 +57,12 @@ public class AlarmAreaPartition implements IAlarmObject {
 	
 	public boolean isArea() {
 		String area = ID.substring(2,4);
-		return (Integer.parseInt(area) != 0);
+		return (Integer.parseInt(area, 16) != 0);
 	}
 	
 	public boolean isPartition() {
 		String partition = ID.substring(0,2);
-		return (Integer.parseInt(partition) != 0);
+		return (Integer.parseInt(partition, 16) != 0);
 	}
 	
 	public void setText(String newStatusText) {
