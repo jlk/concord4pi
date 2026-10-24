@@ -32,21 +32,43 @@ public class SerialController {
 	protected SerialController(LogEngine logger) {
 		this.logger = logger;
 	}
-
+	
+	//test seam: knows its device but doesn't open it until openSerialPort() is called
+	SerialController(LogEngine logger, String serialPort) {
+		this.deviceName = serialPort;
+		this.logger = logger;
+	}
+	
 	public void setupSerialPort() {
-		serialPort = SerialPort.getCommPort(deviceName);
-		serialPort.setComPortParameters(baudRate, dataBits, stopBits, parity);
-		//serialPort.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, msDelay, 0);
-		
-		if(serialPort.openPort()) {
-			//if we get here, then we have the port opened!
-			logger.log("Serial Port (" + deviceName + ") OPEN!", Level.INFO);
-		}
-		else {
-			logger.log("Serial Port (" + deviceName + ") could not be opened!", Level.ERROR);
+		if(!openSerialPort()) {
 			System.out.println("Could not connect to the serial port (" + deviceName + ")");
 			System.out.println("Please correct and restart");
 			System.exit(0);
+		}
+	}
+	
+	//true if the port opened; false, with the reason logged, if it didn't
+	boolean openSerialPort() {
+		try {
+			serialPort = SerialPort.getCommPort(deviceName);
+		}
+		catch(SerialPortInvalidPortException invalid) {
+			//jSerialComm throws for a name it can't map to a port, which includes any path
+			//that doesn't exist, not only malformed ones like the committed config's placeholder
+			logger.log("Serial Port (" + deviceName + ") could not be opened! " + invalid.getMessage(), Level.ERROR);
+			return false;
+		}
+		serialPort.setComPortParameters(baudRate, dataBits, stopBits, parity);
+		//serialPort.setComPortTimeouts(SerialPort.TIMEOUT_READ_SEMI_BLOCKING, msDelay, 0);
+	
+		if(serialPort.openPort()) {
+			//if we get here, then we have the port opened!
+			logger.log("Serial Port (" + deviceName + ") OPEN!", Level.INFO);
+			return true;
+		}
+		else {
+			logger.log("Serial Port (" + deviceName + ") could not be opened!", Level.ERROR);
+			return false;
 		}
 	}
 	
