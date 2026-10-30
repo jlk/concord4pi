@@ -3,7 +3,10 @@ package concord4pi.config;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import java.util.TreeSet;
 
 public class Config {
 	
@@ -64,6 +67,27 @@ public class Config {
 	
 	public String getProperty(String key) {
 		return prop.getProperty(key);
+	}
+	
+	public String getConfigFileName() {
+		return configFileName;
+	}
+	
+	//every key=value read from the file, sorted by key, safe to log: a key with "password" in its
+	//name shows <hidden> (or <empty>), and so does the password part of a URL like tcp://user:pass@host
+	public List<String> describe() {
+		List<String> lines = new ArrayList<String>();
+		for(String key : new TreeSet<String>(prop.stringPropertyNames())) {
+			String value = prop.getProperty(key);
+			if(key.toLowerCase().contains("password")) {
+				value = value.isEmpty() ? "<empty>" : "<hidden>";
+			}
+			else {
+				value = value.replaceAll("(://[^/@:]*):[^/@]*@", "$1:<hidden>@");
+			}
+			lines.add(key + "=" + value);
+		}
+		return lines;
 	}
 	
 	//true only for exactly "true"; a missing key is false rather than null

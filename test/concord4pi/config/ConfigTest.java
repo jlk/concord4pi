@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,6 +52,40 @@ class ConfigTest {
 	@Test
 	void missingPropertyIsNull() throws IOException {
 		assertNull(configWith("SerialDevice=/dev/ttyUSB0\n").getProperty("MQTTBroadcaster"));
+	}
+
+	@Test
+	void describeListsEveryKeySortedWithItsValue() throws IOException {
+		List<String> lines = configWith("SerialDevice=/dev/ttyUSB0\nMQTTBroadcaster=true\nMQTTBaseTopic=concord4pi\n").describe();
+
+		assertEquals(List.of("MQTTBaseTopic=concord4pi", "MQTTBroadcaster=true", "SerialDevice=/dev/ttyUSB0"), lines);
+	}
+
+	@Test
+	void describeHidesPasswords() throws IOException {
+		List<String> lines = configWith("MQTTUsername=alarm\nMQTTPassword=s3cret\nOtherPASSWORDKey=x\n").describe();
+
+		assertEquals(List.of("MQTTPassword=<hidden>", "MQTTUsername=alarm", "OtherPASSWORDKey=<hidden>"), lines);
+		assertFalse(String.join("\n", lines).contains("s3cret"));
+	}
+
+	@Test
+	void describeSaysWhenAPasswordIsEmpty() throws IOException {
+		assertEquals(List.of("MQTTPassword=<empty>"), configWith("MQTTPassword=\n").describe());
+	}
+
+	@Test
+	void describeHidesAPasswordInsideAUrl() throws IOException {
+		List<String> lines = configWith("MQTTConnectionString=tcp://alarm:s3cret@broker:1883\n").describe();
+
+		assertEquals(List.of("MQTTConnectionString=tcp://alarm:<hidden>@broker:1883"), lines);
+	}
+
+	@Test
+	void describeLeavesAUrlWithoutAPasswordAlone() throws IOException {
+		List<String> lines = configWith("MQTTConnectionString=tcp://broker:1883\n").describe();
+
+		assertEquals(List.of("MQTTConnectionString=tcp://broker:1883"), lines);
 	}
 
 	@Test
