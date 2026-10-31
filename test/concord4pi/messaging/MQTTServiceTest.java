@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.function.BooleanSupplier;
 
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
+import org.eclipse.paho.client.mqttv3.MqttClient;
+import org.eclipse.paho.client.mqttv3.MqttException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,8 @@ class MQTTServiceTest {
 	private static final String COMMAND_TOPIC = BASE + "/cmd";
 	private static final String RECEIPT = BASE + "/cmd/receipt";
 	private static final long WAIT_MS = 5000;
+	//short, so tests that hit the hold-off after a timed-out publish don't take long
+	private static final long TIMEOUT_MS = 300;
 
 	private FakeMqttClient client;
 	private RecordingLogEngine logger;
@@ -47,9 +51,13 @@ class MQTTServiceTest {
 		}
 	}
 
-	private MQTTService create(String username, String password, boolean enableCommands) {
-		service = new MQTTService(logger, client, username, password, BASE, "cmd", enableCommands);
+	private MQTTService create(String username, String password, boolean enableCommands, long timeoutMs) {
+		service = new MQTTService(logger, client, username, password, BASE, "cmd", enableCommands, timeoutMs);
 		return service;
+	}
+
+	private MQTTService create(String username, String password, boolean enableCommands) {
+		return create(username, password, enableCommands, TIMEOUT_MS);
 	}
 
 	private MQTTService create() {
@@ -197,6 +205,8 @@ class MQTTServiceTest {
 		assertFalse(runThread.isAlive());
 		assertEquals(List.of(COMMAND_TOPIC), client.unsubscribed());
 		assertFalse(client.isConnected());
+		//not Paho's fixed 30s, which a broker that stopped acking would make shutdown wait out
+		assertEquals(TIMEOUT_MS, client.lastDisconnectQuiesceMs());
 	}
 
 	//known bugs: each asserts the correct behavior (see CLAUDE.md, "Known defects")
@@ -302,6 +312,73 @@ class MQTTServiceTest {
 		service.sendMessage(update("/panel/type", "14"));
 
 		assertTrue(logger.logged(Level.WARN, "/panel/type"), logger.entries().toString());
+	}
+
+	//half-dead broker: connected, but not acknowledging publishes
+
+	@Test
+	void theClientIsBuiltWithTheConfiguredTimeout() throws Exception {
+		//never connected, so nothing to clean up (and Paho 1.1.1's close() throws on such a client)
+		MqttClient built = MQTTService.createClient(logger, "tcp://localhost:1883", "timeout-test", 7000);
+		assertEquals(7000, built.getTimeToWait());
+	}
+
+	@Test
+	void aTimedOutPublishIsRetriedAfterTheTimeoutAndKeepsItsPlace() throws Exception {
+		create();
+		client.failNextPublishes(1, MqttException.REASON_CODE_CLIENT_TIMEOUT);
+		service.sendNotification(update("/panel/type", "14"));
+		service.sendNotification(update("/panel/name", "Concord"));
+
+		long started = System.currentTimeMillis();
+		startRunLoop();
+		await("both notifications to be published", () -> client.published().size() == 2);
+
+		List<FakeMqttClient.Published> published = client.published();
+		assertEquals(BASE + "/panel/type", published.get(0).topic);
+		assertEquals(BASE + "/panel/name", published.get(1).topic);
+		assertEquals(3, client.publishCalls());
+		assertTrue(System.currentTimeMillis() - started >= TIMEOUT_MS - 50, "retried without holding off");
+		assertTrue(logger.logged(Level.WARN, "/panel/type"), logger.entries().toString());
+	}
+
+	@Test
+	void tooManyInFlightIsHeldLikeATimeout() throws Exception {
+		create();
+		client.failNextPublishes(2, MqttException.REASON_CODE_MAX_INFLIGHT);
+		service.sendNotification(update("/panel/type", "14"));
+		startRunLoop();
+
+		await("the notification to be published", () -> "14".equals(client.lastPayload(BASE + "/panel/type")));
+		assertEquals(3, client.publishCalls());
+	}
+
+	@Test
+	void anyOtherPublishFailureWhileConnectedDropsThePacket() throws Exception {
+		create();
+		client.failNextPublishes(1);
+		service.sendNotification(update("/panel/type", "14"));
+		service.sendNotification(update("/panel/name", "Concord"));
+		startRunLoop();
+
+		await("the second notification to be published", () -> client.lastPayload(BASE + "/panel/name") != null);
+		assertNull(client.lastPayload(BASE + "/panel/type"));
+	}
+
+	@Test
+	void shutdownDuringTheHoldOffStopsPromptly() throws Exception {
+		create("", "", true, 60000);
+		client.failNextPublishes(Integer.MAX_VALUE, MqttException.REASON_CODE_CLIENT_TIMEOUT);
+		service.sendNotification(update("/panel/type", "14"));
+		startRunLoop();
+		await("the publish to be tried", () -> client.publishCalls() >= 1);
+
+		long started = System.currentTimeMillis();
+		service.shutdown();
+		runThread.join(WAIT_MS);
+
+		assertFalse(runThread.isAlive());
+		assertTrue(System.currentTimeMillis() - started < 2000, "shutdown waited out the hold-off");
 	}
 
 	@Test

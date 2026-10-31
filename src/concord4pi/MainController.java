@@ -135,7 +135,8 @@ public class MainController {
 					appConfig.getProperty("MQTTPassword"),
 					appConfig.getProperty("MQTTBaseTopic"),
 					appConfig.getProperty("MQTTCommandTopic"),
-					enableCommands
+					enableCommands,
+					appConfig.getMQTTTimeoutSeconds() * 1000L
 					);
 			
 			//add to the broadcaster pool

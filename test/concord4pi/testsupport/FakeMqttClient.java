@@ -54,6 +54,9 @@ public class FakeMqttClient implements IMqttClient {
 	private int connectFailures = 0;
 	private int subscribeFailures = 0;
 	private int publishFailures = 0;
+	private int publishFailureReason = MqttException.REASON_CODE_CLIENT_EXCEPTION;
+	private int publishCalls = 0;
+	private long lastDisconnectQuiesceMs = -1;
 	private int subscribeCalls = 0;
 	private int disconnectCalls = 0;
 	private final Set<String> subscriptions = new HashSet<String>();
@@ -72,7 +75,16 @@ public class FakeMqttClient implements IMqttClient {
 
 	/** The next n publish() calls fail even though the client is connected. */
 	public synchronized void failNextPublishes(int n) {
+		failNextPublishes(n, MqttException.REASON_CODE_CLIENT_EXCEPTION);
+	}
+
+	/**
+	 * The next n publish() calls fail with this Paho reason code, still connected. With
+	 * REASON_CODE_CLIENT_TIMEOUT this is a half-dead broker: Paho's wait ran out without an ack.
+	 */
+	public synchronized void failNextPublishes(int n, int reasonCode) {
 		publishFailures = n;
+		publishFailureReason = reasonCode;
 	}
 
 	/** The broker goes away: the client is disconnected and told so, and subscriptions are lost. */
@@ -116,7 +128,11 @@ public class FakeMqttClient implements IMqttClient {
 	public synchronized MqttConnectOptions lastConnectOptions() { return lastConnectOptions; }
 	public synchronized int connectAttempts() { return connectAttempts; }
 	public synchronized int subscribeCalls() { return subscribeCalls; }
+	/** Every publish() call, including the ones that failed. */
+	public synchronized int publishCalls() { return publishCalls; }
 	public synchronized int disconnectCalls() { return disconnectCalls; }
+	/** The quiesce timeout of the last disconnect; Paho's no-argument disconnect() uses 30s. */
+	public synchronized long lastDisconnectQuiesceMs() { return lastDisconnectQuiesceMs; }
 	public synchronized boolean isSubscribed(String topic) { return subscriptions.contains(topic); }
 	public synchronized List<String> unsubscribed() { return new ArrayList<String>(unsubscribed); }
 	public synchronized List<Published> published() { return new ArrayList<Published>(published); }
@@ -181,19 +197,26 @@ public class FakeMqttClient implements IMqttClient {
 
 	@Override
 	public synchronized void publish(String topic, MqttMessage message) throws MqttException {
+		publishCalls++;
 		if(!connected) {
 			throw new MqttException(MqttException.REASON_CODE_CLIENT_NOT_CONNECTED);
 		}
 		if(publishFailures > 0) {
 			publishFailures--;
-			throw new MqttException(MqttException.REASON_CODE_CLIENT_EXCEPTION);
+			throw new MqttException(publishFailureReason);
 		}
 		published.add(new Published(topic, message));
 	}
 
 	@Override
 	public synchronized void disconnect() throws MqttException {
+		disconnect(30000);
+	}
+
+	@Override
+	public synchronized void disconnect(long quiesceTimeout) throws MqttException {
 		disconnectCalls++;
+		lastDisconnectQuiesceMs = quiesceTimeout;
 		if(!connected) {
 			throw new MqttException(MqttException.REASON_CODE_CLIENT_ALREADY_DISCONNECTED);
 		}
@@ -211,8 +234,6 @@ public class FakeMqttClient implements IMqttClient {
 
 	@Override
 	public IMqttToken connectWithResult(MqttConnectOptions options) { throw new UnsupportedOperationException(); }
-	@Override
-	public void disconnect(long quiesceTimeout) { throw new UnsupportedOperationException(); }
 	@Override
 	public void disconnectForcibly() { throw new UnsupportedOperationException(); }
 	@Override

@@ -19,6 +19,7 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.tinylog.Level;
 
 import concord4pi.SB2000.IOMessage;
+import concord4pi.config.Config;
 import concord4pi.logging.LogEngine;
 
 public class MQTTService implements Runnable, IBroadcaster {
@@ -65,12 +66,22 @@ public class MQTTService implements Runnable, IBroadcaster {
 	//how long run() blocks on an empty queue before re-checking isRunning
 	private static final long QUEUE_WAIT_MS = 500;
 	
+	//how long a blocking call waits for the broker, and how long to hold off after a publish timed out
+	private final long timeoutMs;
+
+	//the default timeout; kept so debug/BrokerHarness builds against this and older versions alike
 	public MQTTService(LogEngine logger, String connectionString, String clientID, String username, String password, String topicBase, String listenTopic, boolean enableCommands) {
-		this(logger, createClient(logger, connectionString, clientID), username, password, topicBase, listenTopic, enableCommands);
+		this(logger, connectionString, clientID, username, password, topicBase, listenTopic, enableCommands, Config.DEFAULT_MQTT_TIMEOUT_SECONDS * 1000L);
 	}
-	
-	//test seam: takes the client instead of building one, so tests can pass a fake
-	MQTTService(LogEngine logger, IMqttClient clientConnection, String username, String password, String topicBase, String listenTopic, boolean enableCommands) {
+
+	public MQTTService(LogEngine logger, String connectionString, String clientID, String username, String password, String topicBase, String listenTopic, boolean enableCommands, long timeoutMs) {
+		this(logger, createClient(logger, connectionString, clientID, timeoutMs), username, password, topicBase, listenTopic, enableCommands, timeoutMs);
+	}
+
+	//test seam: takes the client instead of building one, so tests can pass a fake.  The client is
+	//expected to already enforce timeoutMs; here it sets the hold-off after a timed-out publish
+	//and the disconnect quiesce
+	MQTTService(LogEngine logger, IMqttClient clientConnection, String username, String password, String topicBase, String listenTopic, boolean enableCommands, long timeoutMs) {
 		this.logger = logger;
 		this.clientConnection = clientConnection;
 		this.username = username;
@@ -78,7 +89,8 @@ public class MQTTService implements Runnable, IBroadcaster {
 		this.topicBase = topicBase;
 		this.listenTopic = listenTopic;
 		this.enableCommands = enableCommands;
-	
+		this.timeoutMs = timeoutMs;
+
 		isRunning = true;
 		hasConnected = connect();
 		if(hasConnected) {
@@ -86,15 +98,19 @@ public class MQTTService implements Runnable, IBroadcaster {
 		}
 	}
 	
-	private static IMqttClient createClient(LogEngine logger, String connectionString, String clientID) {
+	//package-private for tests
+	static MqttClient createClient(LogEngine logger, String connectionString, String clientID, long timeoutMs) {
 		try {
-			IMqttClient client = new MqttClient(
+			MqttClient client = new MqttClient(
 					connectionString,
 					clientID,
 					//in-memory: with clean session true Paho clears the store on every connect,
 					//so a file store only cost a write and a delete per QoS 1 publish
 					new MemoryPersistence()
 			);
+			//Paho's default is to wait forever, so a broker that holds the connection open but
+			//stops acknowledging would stall the publish thread until the connection dropped
+			client.setTimeToWait(timeoutMs);
 			logger.log("Created MQTT Service connection", Level.DEBUG);
 			return client;
 		} catch (MqttException e) {
@@ -192,11 +208,28 @@ public class MQTTService implements Runnable, IBroadcaster {
 		NotificationPacket packet = notificationQueue.poll(QUEUE_WAIT_MS, TimeUnit.MILLISECONDS);
 		if(packet != null) {
 			logger.log(() -> "Sending Notification packet via MQTT Service [" + packet + "]", Level.DEBUG);
-			if(!sendMessage(packet) && !clientConnection.isConnected()) {
+			MqttException failure = publish(packet);
+			if(failure == null) {
+				return;
+			}
+			if(!clientConnection.isConnected()) {
 				//the connection dropped under this publish: put it back to go out after the reconnect
 				notificationQueue.offerFirst(packet);
 			}
+			else if(brokerNotAcknowledging(failure)) {
+				//connected, but the broker isn't acking.  Keep the packet and hold off rather than
+				//drain the queue into it; a reconnect or shutdown ends the wait early
+				notificationQueue.offerFirst(packet);
+				pause(timeoutMs);
+			}
 		}
+	}
+
+	//a timed-out publish stays in flight inside Paho, so once enough have timed out, Paho refuses
+	//new ones with MAX_INFLIGHT until the broker catches up or the connection drops
+	private static boolean brokerNotAcknowledging(MqttException failure) {
+		int reason = failure.getReasonCode();
+		return (reason == MqttException.REASON_CODE_CLIENT_TIMEOUT) || (reason == MqttException.REASON_CODE_MAX_INFLIGHT);
 	}
 	
 	private void retryConnect() throws InterruptedException {
@@ -256,7 +289,9 @@ public class MQTTService implements Runnable, IBroadcaster {
 	
 	private boolean disconnect() {
 		try {
-			clientConnection.disconnect();
+			//disconnect() gives in-flight messages a fixed 30s to finish, and setTimeToWait doesn't
+			//cover it, so a broker that stopped acking would hold up shutdown that long
+			clientConnection.disconnect(timeoutMs);
 		} catch (MqttException e) {
 			logger.log("Exception while trying to disconnect from MQTT Service!", Level.WARN);
 			return false;
@@ -289,6 +324,11 @@ public class MQTTService implements Runnable, IBroadcaster {
 	
 	//true when the packet needs nothing more: published, or skipped on purpose
 	public boolean sendMessage(NotificationPacket packet) {
+		return publish(packet) == null;
+	}
+
+	//null when the packet needs nothing more, otherwise why the publish failed (already logged)
+	private MqttException publish(NotificationPacket packet) {
 		String messageTopic = packet.key;
 		String message = packet.value;
 		
@@ -309,10 +349,10 @@ public class MQTTService implements Runnable, IBroadcaster {
 			} catch (MqttException e) {
 				//the topic but not the value: command receipts echo the raw command back
 				logger.log("Could not publish to MQTT topic [" + topicBase + messageTopic + "]: " + e.getMessage(), Level.WARN);
-				return false;
+				return e;
 			}
 		}
-		return true;
+		return null;
 	}
 	
 	//for tests: how many notifications are waiting to be published

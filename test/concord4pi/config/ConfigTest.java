@@ -129,6 +129,30 @@ class ConfigTest {
 	}
 
 	@Test
+	void missingMqttTimeoutIsTheDefault() throws IOException {
+		Config config = configWith("SerialDevice=/dev/ttyUSB0\n");
+
+		assertTrue(config.valid());
+		assertEquals(Config.DEFAULT_MQTT_TIMEOUT_SECONDS, config.getMQTTTimeoutSeconds());
+	}
+
+	@Test
+	void mqttTimeoutIsReadInSecondsIgnoringSurroundingSpace() throws IOException {
+		//Properties strips leading space but keeps trailing space
+		Config config = configWith("SerialDevice=/dev/ttyUSB0\nMQTTTimeoutSeconds=45  \n");
+
+		assertTrue(config.valid());
+		assertEquals(45, config.getMQTTTimeoutSeconds());
+	}
+
+	@Test
+	void mqttTimeoutThatIsNotAPositiveWholeNumberIsInvalid() throws IOException {
+		for(String bad : List.of("", "0", "000", "-5", "1.5", "30s", "abc", "9999999999")) {
+			assertFalse(configWith("SerialDevice=/dev/ttyUSB0\nMQTTTimeoutSeconds=" + bad + "\n").valid(), "accepted [" + bad + "]");
+		}
+	}
+
+	@Test
 	void eachConfigReloadsFromItsOwnFile() throws IOException {
 		configWith("SerialDevice=/dev/first\n");
 		Path second = tempDir.resolve("second.config");
