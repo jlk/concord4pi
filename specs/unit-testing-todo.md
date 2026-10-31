@@ -19,7 +19,7 @@ Principles:
 ## 1. Toolchain ✅ Completed 2026-10-23
 
 - [x] JUnit 5.13.4 (Jupiter) through `lib/test/junit-platform-console-standalone-1.13.4.jar`. It's downloaded, and its SHA-1 matches Maven Central. The baseline `ant clean compile` passes.
-  - [ ] Commit the jar, following the repo's convention of committing jars in `lib/`. *Not done yet: it waits until you ask for a commit.*
+  - [x] Commit the jar, following the repo's convention of committing jars in `lib/`. *Done: committed with the test suite in `0ff0480`.*
   - Why 5.x and not JUnit 6: JUnit 6 requires Java 17, and the Docker image builds with JDK 15.
 - [x] No mocking library. The fakes are hand-written, because only two are needed (a broadcaster and a serial controller).
 - [x] Test sources must stay Java 15 compatible. *This is an ongoing rule, and section 6 verifies it.*
@@ -154,7 +154,7 @@ These live in the test class for the code they cover, not in a separate class. W
 ## 6. Verification ✅ Completed 2026-10-23 (the Docker run was replaced by a compile-level check; see below)
 
 - [x] `ant test` passes locally (Homebrew JDK 27 plus a scratchpad copy of ant): 137 found, 120 passing, 17 skipped, each shown with its "Known bug: ..." reason.
-- [ ] Java 15 compatibility: run `ant test` inside `openjdk:15-jdk-alpine` through Docker. *Not run: the Docker daemon wasn't running.*
+- [x] Java 15 compatibility: run `ant test` inside `openjdk:15-jdk-alpine` through Docker. *Superseded (2026-10-31): that image no longer exists and the target moved to Java 21. The real-JVM run below, on Temurin 21, is the check that counts.*
   - [x] Substitute check: compiled `src/` and `test/` with `javac --release 15`, which uses the Java 15 API and language level. Both compiled cleanly to class-file major version 59 (Java 15), and that build runs 120 passing / 17 skipped. It still hasn't been run on a real Java 15 JVM. To do that, start Docker and run:
     `docker run --rm -v "$PWD":/src:ro openjdk:15-jdk-alpine sh -c 'apk add -q apache-ant && cp -r /src /work && cd /work && ant clean test'`
   - **Update 2026-10-23:** that image no longer exists. The target is now Java 21, and `build.xml` compiles `src/` and `test/` with `release="21"`. To check on a real Java 21 JVM, run:

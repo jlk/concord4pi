@@ -6,6 +6,7 @@
   <property name="src" location="src/concord4pi"/>
   <property name="build" location="build"/>
   <property name="dist" location="dist"/>
+  <property name="deps" location="build-deps"/>
   <property name="test.src" location="test"/>
   <property name="test.build" location="build-test"/>
   <property name="test.lib" location="lib/test"/>
@@ -52,8 +53,30 @@
     <!-- Create the distribution directory -->
     <mkdir dir="${dist}/lib"/>
 
-    <!-- Put everything in ${build} into concord4pi.jar file -->
-    <jar jarfile="jars/concord4pi.jar" basedir="${build}"/>
+    <!-- Unpack the runtime jars to bundle them.  Their manifests and Paho's signature files would
+         be wrong in the merged jar, and the module-info classes would describe modules it isn't. -->
+    <delete dir="${deps}"/>
+    <unzip dest="${deps}">
+      <fileset dir="lib" includes="*.jar"/>
+      <patternset>
+        <exclude name="META-INF/MANIFEST.MF"/>
+        <exclude name="META-INF/*.SF"/>
+        <exclude name="META-INF/*.RSA"/>
+        <exclude name="META-INF/*.DSA"/>
+        <exclude name="**/module-info.class"/>
+      </patternset>
+    </unzip>
+
+    <!-- Self-contained, so it runs with java -jar and no classpath -->
+    <jar jarfile="jars/concord4pi.jar">
+      <fileset dir="${build}"/>
+      <fileset dir="${deps}"/>
+      <manifest>
+        <attribute name="Main-Class" value="concord4pi.concord4pi"/>
+        <!-- jSerialComm loads a native library; JDK 22+ warns (and will later refuse) without this -->
+        <attribute name="Enable-Native-Access" value="ALL-UNNAMED"/>
+      </manifest>
+    </jar>
   </target>
 
   <target name="compile-test" depends="compile"
@@ -82,8 +105,9 @@
 
   <target name="clean"
         description="clean up">
-    <!-- Delete the ${build}, ${test.build} and ${dist} directory trees -->
+    <!-- Delete the ${build}, ${deps}, ${test.build} and ${dist} directory trees -->
     <delete dir="${build}"/>
+    <delete dir="${deps}"/>
     <delete dir="${test.build}"/>
     <delete dir="${dist}"/>
   </target>
